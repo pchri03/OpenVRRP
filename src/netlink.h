@@ -16,17 +16,24 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "mainloop.h"
-#include "vrrp.h"
+#ifndef INCLUDE_NETLINK_H
+#define INCLUDE_NETLINK_H
 
-#include <syslog.h>
+#include "util.h"
 
-int main ()
+#include <cstdint>
+
+class Netlink
 {
-	openlog("openvrrp", LOG_PERROR, LOG_DAEMON);
+	public:
+		static int addMacvlanInterface (const char *interface, const std::uint8_t *macAddress);
+		static int addMacvlanInterface (int interface, const std::uint8_t *macAddress);
+		static bool removeMacvlanInterface (const char *interface);
+		static bool removeMacvlanInterface (int interface);
+		static bool addIpAddress (const char *interface, const Addr &addr);
+		static bool addIpAddress (int interface, const Addr &addr);
+		static bool removeIpAddress (const char *interface, const Addr &addr);
+		static bool removeIpAddress (int interface, const Addr &addr);
+};
 
-	Vrrp vrrp("eth0", AF_INET, 1);
-	vrrp.addAddress("192.168.2.220");
-
-	return MainLoop::run() ? 0 : -1;
-}
+#endif // INCLUDE_NETLINK_H

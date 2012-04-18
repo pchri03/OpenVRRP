@@ -16,17 +16,21 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "mainloop.h"
-#include "vrrp.h"
+#ifndef INCLUDE_UTIL_H
+#define INCLUDE_UTIL_H
 
-#include <syslog.h>
+#include <netinet/in.h>
 
-int main ()
+union SockAddr
 {
-	openlog("openvrrp", LOG_PERROR, LOG_DAEMON);
+	sockaddr common;
+	sockaddr_in ipv4;
+	sockaddr_in6 ipv6;
+};
+union Addr
+{
+	in_addr ipv4;
+	in6_addr ipv6;
+};
 
-	Vrrp vrrp("eth0", AF_INET, 1);
-	vrrp.addAddress("192.168.2.220");
-
-	return MainLoop::run() ? 0 : -1;
-}
+#endif // INCLUDE_UTIL_H

@@ -41,13 +41,13 @@ Timer::~Timer ()
 	while (close(m_fd) == -1 && errno == EINTR);
 }
 
-void Timer::start (unsigned int dsec)
+void Timer::start (unsigned int msec)
 {
 	struct itimerspec value;
 	value.it_interval.tv_sec = 0;
 	value.it_interval.tv_nsec = 0;
-	value.it_value.tv_sec = msec / 100;
-	value.it_value.tv_nsec = (msec % 100) * 10000000;
+	value.it_value.tv_sec = msec / 1000;
+	value.it_value.tv_nsec = (msec % 1000) * 1000000;
 	timerfd_settime(m_fd, 0, &value, 0);
 	if (!m_armed)
 	{

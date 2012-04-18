@@ -2,8 +2,8 @@ CXXFILES:=$(wildcard src/*.cpp)
 OFILES=$(CXXFILES:.cpp=.o)
 TARGET=openvrrp
 CXX:=g++
-EXTRA_CXXFLAGS=
-EXTRA_LDFLAGS=
+EXTRA_CXXFLAGS=-std=c++0x -g
+EXTRA_LDFLAGS=-g
 
 all: $(TARGET)
 
@@ -16,4 +16,10 @@ $(TARGET): $(OFILES)
 clean:
 	rm -f $(OFILES) $(TARGET)
 
-.PHONY: all clean
+test: $(TARGET)
+	sudo ./$(TARGET)
+
+debug: $(TARGET)
+	sudo gdb ./$(TARGET)
+
+.PHONY: all clean test debug

@@ -20,8 +20,12 @@
 #define INCLUDE_VRRP_H
 
 #include "timer.h"
+#include "util.h"
 
 #include <cstdint>
+#include <list>
+
+#include <net/if.h>
 
 class Vrrp
 {
@@ -43,13 +47,16 @@ class Vrrp
 		unsigned int skewTime () const;
 		unsigned int masterDownInterval () const;
 
-		bool getPreemptMode () const;
+		bool preemptMode () const;
 		void setPreemptMode (bool enabled);
 
-		bool getAcceptMode () const;
+		bool acceptMode () const;
 		void setAcceptMode (bool enabled);
 
-	protected:
+		bool addAddress (const char *address);
+		bool removeAddress (const char *address);
+
+	private:
 		enum State
 		{
 			Initialize,
@@ -57,16 +64,35 @@ class Vrrp
 			Master
 		};
 
+		bool initSocket ();
+
+		bool joinMulticast (const char *interface);
+		bool leaveMulticast (const char *interface);
+		bool modifyMulticast (const char *interface, bool join);
 		void initSocket (const char *interface, int family);
 
 		void startup ();
 		void shutdown ();
-		virtual void onStartupEvent () = 0;
-		virtual void onMasterDownEvent () = 0;
-		virtual void sendAdvertisement (int priority = -1) = 0;
-		virtual void onVrrpPacket (const std::uint8_t *packet, unsigned int size) = 0;
+		bool sendAdvertisement (int priority = -1);
+
+		void onVrrpPacket ();
+		void onMasterDownTimer ();
+		void onAdvertisementTimer ();
 
 		void setState (State state);
+
+		bool sendARPs ();
+		bool sendNeighborAdvertisements ();
+		bool joinSolicitedNodeMulticasts ();
+		bool setVirtualMac ();
+		bool setDefaultMac ();
+		bool addMacvlanInterface ();
+		bool removeMacvlanInterface ();
+
+		bool addIpAddress (const Addr &addr);
+		bool removeIpAddress (const Addr &addr);
+		bool addIpAddresses ();
+		bool removeIpAddresses ();
 
 	private:
 		static void socketCallback (int, void *);
@@ -85,10 +111,16 @@ class Vrrp
 		Timer m_advertisementTimer;
 
 		State m_state;
-		
+		int m_family;
 		int m_socket;
+		int m_arpSocket;
+		char m_interface[IF_NAMESIZE];
+		char m_outputInterface[IF_NAMESIZE];
 
 		std::uint8_t m_buffer[1500];
+
+		typedef std::list<Addr> AddrList;
+		std::list<Addr> m_addrs;
 };
 
 #endif // INCLUDE_VRRP_H
