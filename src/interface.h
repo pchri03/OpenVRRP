@@ -16,45 +16,34 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef INCLUDE_MAIN_LOOP_H
-#define INCLUDE_MAIN_LOOP_H
+#ifndef INCLUDE_INTERFACE_H
+#define INCLUDE_INTERFACE_H
 
-#include <map>
+#include <cstdint>
 
-class MainLoop
+class InterfaceEngine;
+
+class Interface
 {
 	public:
-		typedef void (Callback)(int fd, void *userData);
+		typedef void (Callback)(Interface &interface, const std::uint8_t *packet, unsigned int size, void *userData);
 
-		static bool addMonitor (int fd, Callback *callback, void *userData);
-		static bool removeMonitor (int fd);
+		virtual ~Interface ();
 
-		static bool run ();
-
-	private:
-		static void init ();
-		static void timerCallback (int fd, Callback *callback, void *userData);
-
-	private:
-		struct Monitor
-		{
-			Callback *callback;
-			void *userData;
-			int fd;
-		};
-
-		struct Timer
-		{
-			Callback *callback;
-			void *userData;
-		};
-
-		typedef std::map<int, Monitor *> MonitorMap;
-		typedef std::map<int, Timer *> TimerMap;
+		virtual void setAddress (const uint8_t *mac) = 0;
+		virtual void resetAddress () = 0;
 		
-		static int m_fd;
-		static MonitorMap m_monitors;
-		static TimerMap m_timers;
+		virtual void addCallback (Callback *callback, void *userData) = 0;
+		virtual void removeCallback (Callback *callback) = 0;
+
+		void send (const void *data, unsigned int size);
+
+		int family () const;
+
+		static Interface getInterface (const char *name, int family);
+
+	private:
+		InterfaceEngine *m_engine;
 };
 
-#endif
+#endif // INCLUDE_INTERFACE_H

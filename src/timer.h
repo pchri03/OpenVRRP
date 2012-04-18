@@ -16,45 +16,31 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef INCLUDE_MAIN_LOOP_H
-#define INCLUDE_MAIN_LOOP_H
+#ifndef INCLUDE_TIMER_H
+#define INCLUDE_TIMER_H
 
-#include <map>
+class MainLoop;
 
-class MainLoop
+class Timer
 {
 	public:
-		typedef void (Callback)(int fd, void *userData);
+		typedef void (Callback)(Timer *timer, void *userData);
 
-		static bool addMonitor (int fd, Callback *callback, void *userData);
-		static bool removeMonitor (int fd);
+		Timer(Callback *callback, void *userData);
+		~Timer();
 
-		static bool run ();
-
-	private:
-		static void init ();
-		static void timerCallback (int fd, Callback *callback, void *userData);
+		void start (unsigned int dsec);
+		void stop ();
 
 	private:
-		struct Monitor
-		{
-			Callback *callback;
-			void *userData;
-			int fd;
-		};
+		static void callback (int fd, void *userData);
 
-		struct Timer
-		{
-			Callback *callback;
-			void *userData;
-		};
-
-		typedef std::map<int, Monitor *> MonitorMap;
-		typedef std::map<int, Timer *> TimerMap;
-		
-		static int m_fd;
-		static MonitorMap m_monitors;
-		static TimerMap m_timers;
+	private:
+		int m_fd;
+		bool m_armed;
+		MainLoop *m_mainLoop;
+		Callback *m_callback;
+		void *m_userData;
 };
 
-#endif
+#endif // INCLUDE_TIMER_H

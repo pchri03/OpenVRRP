@@ -16,7 +16,19 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include "mainloop.h"
+#include "timer.h"
+
+#include <iostream>
+
+static void test (Timer *, void *)
+{
+	std::cout << "Hello world" << std::endl;
+}
+
 int main ()
 {
-	return 0;
+	Timer timer(test, 0);
+	timer.start(1000);
+	return MainLoop::run() ? 0 : -1;
 }

@@ -16,45 +16,30 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef INCLUDE_MAIN_LOOP_H
-#define INCLUDE_MAIN_LOOP_H
+#ifndef INCLUDE_ABSTRACT_INTERFACE_H
+#define INCLUDE_ABSTRACT_INTERFACE_H
 
+#include <cstdint>
 #include <map>
 
-class MainLoop
+class AbstractInterface
 {
 	public:
-		typedef void (Callback)(int fd, void *userData);
+		typedef void (Callback)(AbstractInterface *, const std::uint8_t *packet, unsigned int size, void *userData);
 
-		static bool addMonitor (int fd, Callback *callback, void *userData);
-		static bool removeMonitor (int fd);
+		virtual ~AbstractInterface ();
 
-		static bool run ();
+		void addCallback (Callback *callback, void *userData);
+		void removeCallback (Callback *callback);
+
+		virtual void setAddress (const uint8_t *mac);
+		virtual void resetAddress ();
 
 	private:
-		static void init ();
-		static void timerCallback (int fd, Callback *callback, void *userData);
+		typedef std::map<Callback *, void *> CallbackMap;
 
 	private:
-		struct Monitor
-		{
-			Callback *callback;
-			void *userData;
-			int fd;
-		};
-
-		struct Timer
-		{
-			Callback *callback;
-			void *userData;
-		};
-
-		typedef std::map<int, Monitor *> MonitorMap;
-		typedef std::map<int, Timer *> TimerMap;
-		
-		static int m_fd;
-		static MonitorMap m_monitors;
-		static TimerMap m_timers;
+		CallbackMap m_callbacks;
 };
 
-#endif
+#endif // INCLUDE_ABSTRACT_INTERFACE_H

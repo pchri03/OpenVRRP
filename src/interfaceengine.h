@@ -16,45 +16,16 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef INCLUDE_MAIN_LOOP_H
-#define INCLUDE_MAIN_LOOP_H
+#ifndef INCLUDE_INTERFACE_ENGINE_H
+#define INCLUDE_INTERFACE_ENGINE_H
 
-#include <map>
-
-class MainLoop
+class InterfaceEngine
 {
 	public:
-		typedef void (Callback)(int fd, void *userData);
+		virtual ~InterfaceEngine ();
 
-		static bool addMonitor (int fd, Callback *callback, void *userData);
-		static bool removeMonitor (int fd);
-
-		static bool run ();
-
-	private:
-		static void init ();
-		static void timerCallback (int fd, Callback *callback, void *userData);
-
-	private:
-		struct Monitor
-		{
-			Callback *callback;
-			void *userData;
-			int fd;
-		};
-
-		struct Timer
-		{
-			Callback *callback;
-			void *userData;
-		};
-
-		typedef std::map<int, Monitor *> MonitorMap;
-		typedef std::map<int, Timer *> TimerMap;
-		
-		static int m_fd;
-		static MonitorMap m_monitors;
-		static TimerMap m_timers;
+		virtual bool isValid () = 0;
+		virtual bool setAddress (const uint8_t *mac);
 };
 
-#endif
+#endif // INCLUDE_INTERFACE_ENGINE_H
