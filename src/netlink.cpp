@@ -23,6 +23,7 @@
 #include <netlink/addr.h>
 #include <netlink/route/addr.h>
 #include <netlink/route/link.h>
+#include <netlink/version.h>
 
 nl_sock *Netlink::m_socket = 0;
 
@@ -76,7 +77,11 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress)
 
 	rtnl_link_set_addr(link, addr);
 	rtnl_link_set_link(link, interface);
+#ifdef LIBNL_VER_NUM
 	rtnl_link_set_type(link, "macvlan");
+#else
+	rtnl_link_set_info_type(link, "macvlan");
+#endif
 
 	int ret = rtnl_link_add(netlinkSocket(), link, 0);
 	if (ret == 0)
