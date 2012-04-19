@@ -20,6 +20,94 @@
 
 #include <syslog.h>
 
+bool Netlink::modifyIpAddress (int interface, const Ip &ip, bool add)
+{
+	Attribute attr(IFA_LOCAL, ip->data(), ip->size());
+
+	std::vector<std::uint8_t> buffer;
+	buffer.reserve(16 + 16 + attr.size());
+
+	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer.data());
+	hdr->nlmsg_len = buffer.size();
+	hdr->nlmsg_type = (add ? RTM_NEWADDR : RTM_DELADDR);
+	hdr->nlmsg_flags = NLM_F_REQUEST | (add ? NLM_F_CREATE | NLM_F_EXCL : 0);
+	hdr->nlmsg_seq = 1;
+	hdr->nlmsg_pid = getpid();
+
+	ifaddrmsg *msg = reinterpret_cast<ifaddrmsg *>(buffer.data() + 16);
+	msg->ifa_family = ip.family();
+	msg->ifa_prefixlen = ip.size() * 8;
+	msg->ifa_flags = 0;
+	msg->ifa_scope = RT_SCOPE_LINK;
+	msg->ifa_index = interface;
+
+	attr.toPacket(buffer.data() + 32);
+
+	return sendNetlinkPacket(buffer.data(), buffer.size()) == 0;
+}
+
+Netlink::Attribute::Attribute (std::uint16_t type, const void *data, unsigned int size) :
+	m_type(type)
+{
+	if (size > 0)
+	{
+		m_buffer.reserve(size);
+		std::memcpy(m_buffer.data(), data, size);
+	}
+}
+
+Netlink::Attribute::~Attribute ()
+{
+}
+
+Netlink::Attribute::addAttribute (const Attribute &attribute)
+{
+	m_attributes.push_back(attribute);
+}
+
+unsigned int Netlink::Attribute::size () const
+{
+	unsigned int size = 4;
+	if (m_attributes.size() > 0)
+	{
+		for (AttributeList::const_iterator attribute = m_attributes.begin(); attribute != m_attributes.end(); ++attribute)
+		{
+			size += attribute->size();
+		}
+	}
+	else
+	{
+		size += m_buffer.size();
+		if (size & 0x03)
+			size = (size & ~0x03) + 4;
+	}
+
+	return size;
+}
+
+void Netlink::Attribute::toPacket (void *buffer) const
+{
+	std::uint8_t *ptr = reinterpret_cast<std::uint8_t *>(buffer);
+	*reinterpret_cast<std::uint16_t *>(ptr) = size();
+	*reinterpret_cast<std::uint16_t *>(ptr + 2) = m_type;
+	if (m_attribute.size() > 0)
+	{
+		ptr += 4;
+		for (AttributeList::const_iterator attribute = m_attributes.begin(); attribute != m_attributes.end(); ++attribute)
+		{
+			attribute->comple(ptr);
+			ptr += attribute->size();
+		}
+	}
+	else if (m_buffer.size() > 0)
+	{
+		std::memcpy(ptr + 4, m_buffer.data(), m_buffer.size());
+		if (m_buffer.size() & 0x03 != 0)
+			std::memset(ptr + 4 + m_buffer.size(), 0, 4 - (m_buffer.size() & 0x03));
+	}
+}
+
+/*
 #include <netlink/addr.h>
 #include <netlink/route/addr.h>
 #include <netlink/route/link.h>
@@ -147,5 +235,5 @@ bool Netlink::setMac (int interface, const std::uint8_t *macAddress)
 	nl_addr_put(addr);
 
 	return (ret == 0);
-
 }
+*/

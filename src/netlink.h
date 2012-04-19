@@ -23,23 +23,46 @@
 
 #include <cstdint>
 
-struct nl_sock;
-
 class Netlink
 {
 	public:
 		static int addMacvlanInterface (int interface, const std::uint8_t *macAddress);
 		static bool removeInterface (int interface);
 		static bool setMac (int interface, const std::uint8_t *macAddress);
-		static bool addIpAddress (int interface, const Addr &addr, int family);
-		static bool removeIpAddress (int interface, const Addr &addr, int family);
+
+		static bool addIpAddress (int interface, const Ip &ip)
+		{
+			return modifyIpAddress(interface, ip, true);
+		}
+
+		static bool removeIpAddress (int interface, const Ip &ip)
+		{
+			return modifyIpAddress(interface, ip, false);
+		}
 		static bool toggleInterface (int interface, bool up);
 
 	private:
-		static nl_sock *netlinkSocket();
+		static bool modifyIpAddress (int interface, const Ip &ip, bool add);
+		static int sendNetlinkPacket (const void *packet, unsigned int size);
 
-	private:
-		static nl_sock *m_socket;
+		class Attribute
+		{
+			public:
+				Attribute (std::uint16_t type, const void *data = 0, unsigned int size = 0);
+				~Attribute ();
+
+				void addAttribute (const Attribute *attribute);
+
+				unsigned int size () const;
+				void toPacket (void *buffer) const;
+
+			private:
+				typedef std::list<const Attribute *> AttributeList;
+				std::uint16_t type;
+				std::vector<std::uint8_t> m_buffer;
+				AttributeList m_attributes;
+
+		};
 };
 
 #endif // INCLUDE_NETLINK_H
