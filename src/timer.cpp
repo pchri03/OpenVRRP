@@ -67,13 +67,16 @@ void Timer::stop ()
 		value.it_value.tv_nsec = 0;
 		timerfd_settime(m_fd, TFD_TIMER_ABSTIME, &value, 0);
 		MainLoop::removeMonitor(m_fd);
+		m_armed = false;
 	}
 }
 
 void Timer::callback (int, void *userData)
 {
 	Timer *self = reinterpret_cast<Timer *>(userData);
-	self->stop();
 	if (self->m_armed)
+	{
+		self->stop();
 		self->m_callback(self, self->m_userData);
+	}
 }

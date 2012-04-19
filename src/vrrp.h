@@ -30,7 +30,7 @@
 class Vrrp
 {
 	public:
-		Vrrp (const char *interface, int family, std::uint8_t virtualRouterId, std::uint8_t priority = 100);
+		Vrrp (const char *interface, int family, const Addr &primaryAddr, std::uint8_t virtualRouterId, std::uint8_t priority = 100);
 		~Vrrp();
 
 		std::uint8_t virtualRouterId () const;
@@ -66,9 +66,9 @@ class Vrrp
 
 		bool initSocket ();
 
-		bool joinMulticast (const char *interface);
-		bool leaveMulticast (const char *interface);
-		bool modifyMulticast (const char *interface, bool join);
+		bool joinMulticast (int interface);
+		bool leaveMulticast (int interface);
+		bool modifyMulticast (int interface, bool join);
 		void initSocket (const char *interface, int family);
 
 		void startup ();
@@ -94,7 +94,8 @@ class Vrrp
 		bool addIpAddresses ();
 		bool removeIpAddresses ();
 
-	private:
+		std::uint16_t checksum (const void *packet, unsigned int size, const SockAddr &srcAddr, const SockAddr &dstAddr) const;
+
 		static void socketCallback (int, void *);
 		static void masterDownTimerCallback (Timer *, void *);
 		static void advertisementTimerCallback (Timer *, void *);
@@ -102,6 +103,7 @@ class Vrrp
 	private:
 		std::uint8_t m_virtualRouterId;
 		std::uint8_t m_priority;
+		SockAddr m_primaryAddr;
 		unsigned int m_advertisementInterval;
 		unsigned int m_masterAdvertisementInterval;
 		bool m_preemptMode;
@@ -114,10 +116,11 @@ class Vrrp
 		int m_family;
 		int m_socket;
 		int m_arpSocket;
-		char m_interface[IF_NAMESIZE];
-		char m_outputInterface[IF_NAMESIZE];
+		int m_interface;
+		int m_outputInterface;
 
 		std::uint8_t m_buffer[1500];
+		std::uint8_t m_mac[6];
 
 		typedef std::list<Addr> AddrList;
 		std::list<Addr> m_addrs;

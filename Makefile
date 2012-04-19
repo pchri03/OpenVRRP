@@ -2,8 +2,8 @@ CXXFILES:=$(wildcard src/*.cpp)
 OFILES=$(CXXFILES:.cpp=.o)
 TARGET=openvrrp
 CXX:=g++
-EXTRA_CXXFLAGS=-std=c++0x -g
-EXTRA_LDFLAGS=-g
+EXTRA_CXXFLAGS=-std=c++0x -g $(shell pkg-config --cflags libnl-3.0 libnl-route-3.0)
+EXTRA_LDFLAGS=-g $(shell pkg-config --libs libnl-3.0 libnl-route-3.0)
 
 all: $(TARGET)
 

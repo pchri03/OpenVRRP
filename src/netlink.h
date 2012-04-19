@@ -23,17 +23,23 @@
 
 #include <cstdint>
 
+struct nl_sock;
+
 class Netlink
 {
 	public:
-		static int addMacvlanInterface (const char *interface, const std::uint8_t *macAddress);
 		static int addMacvlanInterface (int interface, const std::uint8_t *macAddress);
-		static bool removeMacvlanInterface (const char *interface);
-		static bool removeMacvlanInterface (int interface);
-		static bool addIpAddress (const char *interface, const Addr &addr);
-		static bool addIpAddress (int interface, const Addr &addr);
-		static bool removeIpAddress (const char *interface, const Addr &addr);
-		static bool removeIpAddress (int interface, const Addr &addr);
+		static bool removeInterface (int interface);
+		static bool setMac (int interface, const std::uint8_t *macAddress);
+		static bool addIpAddress (int interface, const Addr &addr, int family);
+		static bool removeIpAddress (int interface, const Addr &addr, int family);
+		static bool toggleInterface (int interface, bool up);
+
+	private:
+		static nl_sock *netlinkSocket();
+
+	private:
+		static nl_sock *m_socket;
 };
 
 #endif // INCLUDE_NETLINK_H

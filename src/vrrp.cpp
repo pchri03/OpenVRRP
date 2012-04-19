@@ -18,6 +18,7 @@
 
 #include "vrrp.h"
 #include "mainloop.h"
+#include "netlink.h"
 
 #include <cerrno>
 #include <cstring>
@@ -25,15 +26,18 @@
 #include <syslog.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_arp.h>
 #include <netinet/in.h>
 #include <netpacket/packet.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 
-Vrrp::Vrrp (const char *interface, int family, std::uint8_t virtualRouterId, std::uint8_t priority) :
+Vrrp::Vrrp (const char *interface, int family, const Addr &primaryAddr, std::uint8_t virtualRouterId, std::uint8_t priority) :
 	m_virtualRouterId(virtualRouterId),
 	m_priority(priority),
 	m_advertisementInterval(1000),
@@ -46,11 +50,45 @@ Vrrp::Vrrp (const char *interface, int family, std::uint8_t virtualRouterId, std
 	m_family(family),
 	m_socket(-1)
 {
-	std::strncpy(m_interface, interface, sizeof(m_interface));
-	std::strncpy(m_outputInterface, interface, sizeof(m_outputInterface));
+	static const std::uint8_t mac[] = {0x00, 0x00, 0x5E, 0x00};
+	std::memcpy(m_mac, mac, 4);
+	m_mac[4] = (family == AF_INET ? 1 : 2);
+	m_mac[5] = virtualRouterId;
+
+	m_interface = if_nametoindex(interface);
+	m_outputInterface = Netlink::addMacvlanInterface(m_interface, m_mac);
+	if (m_outputInterface == 0)
+		m_outputInterface = m_interface;
+
+	// Initialize m_primaryAddr
+	m_primaryAddr.common.sa_family = m_family;
+	if (m_family == AF_INET)
+	{
+		m_primaryAddr.ipv4.sin_port = 0;
+		m_primaryAddr.ipv4.sin_addr.s_addr = primaryAddr.ipv4.s_addr;
+	}
+	else // if (m_family == AF_INET6)
+	{
+		m_primaryAddr.ipv6.sin6_port = 0;
+		m_primaryAddr.ipv6.sin6_flowinfo = 0;
+		std::memcpy(&m_primaryAddr.ipv6.sin6_addr, &primaryAddr.ipv6, 16);
+		m_primaryAddr.ipv6.sin6_scope_id = m_interface;
+	}
 
 	initSocket();
 	startup();
+}
+
+Vrrp::~Vrrp ()
+{
+	if (m_socket != -1)
+	{
+		MainLoop::removeMonitor(m_socket);
+		while (close(m_socket) == -1 && errno == EINTR);
+	}
+
+	if (m_outputInterface != m_interface)
+		Netlink::removeInterface(m_outputInterface);
 }
 
 bool Vrrp::initSocket ()
@@ -64,40 +102,43 @@ bool Vrrp::initSocket ()
 	}
 
 	// Bind to interface
-	/*
-	if (setsockopt(m_socket, SOL_SOCKET, SO_BINDTODEVICE, interface, std::strlen(interface)) == -1)
-		syslog(LOG_WARNING, "Error binding to interface %s: %m", interface);
-	*/
+	if (bind(m_socket, &m_primaryAddr.common, sizeof(m_primaryAddr)) == -1)
+	{
+		syslog(LOG_ERR, "Error binding to address: %m");
+		return false;
+	}
 
 	// Set multicast TTL to 255
 	int val = 255;
 	if (setsockopt(m_socket, IPPROTO_IP, IP_MULTICAST_TTL, &val, sizeof(val)) == -1)
 		syslog(LOG_WARNING, "Error setting TTL: %m");
 
+	MainLoop::addMonitor(m_socket, socketCallback, this);
+
 	return true;
 }
 
-bool Vrrp::joinMulticast (const char *interface)
+bool Vrrp::joinMulticast (int interface)
 {
 	return modifyMulticast(interface, true);
 }
 
-bool Vrrp::leaveMulticast (const char *interface)
+bool Vrrp::leaveMulticast (int interface)
 {
 	return modifyMulticast(interface, false);
 }
 
-bool Vrrp::modifyMulticast (const char *interface, bool join)
+bool Vrrp::modifyMulticast (int interface, bool join)
 {
 	if (m_family == AF_INET)
 	{
 		ip_mreqn mreq;
 		inet_pton(AF_INET, "224.0.0.18", &mreq.imr_multiaddr);
 		mreq.imr_address.s_addr = 0;
-		mreq.imr_ifindex = if_nametoindex(interface);
+		mreq.imr_ifindex = interface;
 		if (setsockopt(m_socket, IPPROTO_IP, join ? IP_ADD_MEMBERSHIP : IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) == -1)
 		{
-			syslog(LOG_WARNING, "Error joining multicast on interface %s: %m", m_interface);
+			syslog(LOG_WARNING, "Error joining multicast: %m");
 			return false;
 		}
 	}
@@ -105,10 +146,10 @@ bool Vrrp::modifyMulticast (const char *interface, bool join)
 	{
 		ipv6_mreq mreq;
 		inet_pton(AF_INET6, "FF02::12", &mreq.ipv6mr_multiaddr);
-		mreq.ipv6mr_interface = if_nametoindex(interface);
+		mreq.ipv6mr_interface = interface;
 		if (setsockopt(m_socket, IPPROTO_IP, join ? IPV6_ADD_MEMBERSHIP : IPV6_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) == -1)
 		{
-			syslog(LOG_WARNING, "Error joining multicast on interface %s: %m", m_interface);
+			syslog(LOG_WARNING, "Error joining multicast: %m");
 			return false;
 		}
 	}
@@ -116,14 +157,6 @@ bool Vrrp::modifyMulticast (const char *interface, bool join)
 	return true;
 }
 
-Vrrp::~Vrrp ()
-{
-	if (m_socket != -1)
-	{
-		MainLoop::removeMonitor(m_socket);
-		while (close(m_socket) == -1 && errno == EINTR);
-	}
-}
 
 void Vrrp::advertisementTimerCallback (Timer *, void *userData)
 {
@@ -148,13 +181,12 @@ void Vrrp::startup ()
 	if (m_priority == 255)
 	{
 		// We're starting up and we're the owner of the virtual IP addresses, so transition to master immediately
-		sendAdvertisement();
+		setState(Master);
 		if (m_family == AF_INET)
 			sendARPs();
 		else // if (m_family == AF_INET6)
 			sendNeighborAdvertisements();
 		m_advertisementTimer.start(advertisementInterval());
-		setState(Master);
 	}
 	else
 	{
@@ -195,8 +227,7 @@ void Vrrp::onMasterDownTimer ()
 	if (m_state == Backup)
 	{
 		// We're backup and the master down timer triggered, so we should transition to master
-		setVirtualMac();
-		sendAdvertisement();
+		setState(Master);
 		if (m_family == AF_INET)
 			sendARPs();
 		else // if (m_family == AF_INET6)
@@ -205,7 +236,6 @@ void Vrrp::onMasterDownTimer ()
 			sendNeighborAdvertisements();
 		}
 		m_advertisementTimer.start(advertisementInterval());
-		setState(Master);
 	}
 }
 
@@ -244,7 +274,8 @@ void Vrrp::onVrrpPacket ()
 		std::uint8_t addrCount = m_buffer[3];
 		std::uint16_t maxAdvertisementInterval = ((std::uint16_t)(m_buffer[4] & 0x0F) << 8) | m_buffer[5];
 
-		// TODO - Checksum
+		if (checksum(m_buffer, size, addr, m_primaryAddr) != 0)
+			return;
 
 		if (m_state == Backup)
 		{
@@ -297,7 +328,7 @@ bool Vrrp::sendAdvertisement (int priority)
 	m_buffer[2] = priority;
 	m_buffer[3] = m_addrs.size();
 
-	unsigned int advertisementInterval = this->advertisementInterval();
+	unsigned int advertisementInterval = this->advertisementInterval() / 10;
 	m_buffer[4] = (advertisementInterval >> 8) & 0x0F;
 	m_buffer[5] = advertisementInterval & 0xFF;
 
@@ -333,10 +364,10 @@ bool Vrrp::sendAdvertisement (int priority)
 		addr.ipv6.sin6_port = 0;
 		addr.ipv6.sin6_flowinfo = 0; // TODO
 		inet_pton(AF_INET6, "FF02::12", &addr.ipv6.sin6_addr);
-		addr.ipv6.sin6_scope_id = if_nametoindex(m_outputInterface);
+		addr.ipv6.sin6_scope_id = m_outputInterface;
 	}
 
-	// TODO - Checksum
+	*reinterpret_cast<std::uint16_t *>(m_buffer + 6) = checksum(m_buffer, totalSize, m_primaryAddr, addr);
 
 	if (sendto(m_socket, m_buffer, totalSize, 0, &addr.common, sizeof(addr)) == -1)
 	{
@@ -350,7 +381,7 @@ bool Vrrp::sendAdvertisement (int priority)
 bool Vrrp::sendARPs ()
 {
 	// Create packet socket
-	int s = socket(AF_PACKET, SOCK_DGRAM, htons(ETHERTYPE_ARP));
+	int s = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
 	if (s == -1)
 	{
 		syslog(LOG_ERR, "Error creating ARP packet: %m");
@@ -361,45 +392,37 @@ bool Vrrp::sendARPs ()
 	struct sockaddr_ll addr;
 	std::memset(&addr, 0, sizeof(addr));
 	addr.sll_family = AF_PACKET;
-	addr.sll_protocol = ETHERTYPE_ARP;
-	addr.sll_ifindex = if_nametoindex(m_outputInterface);
+	addr.sll_protocol = htons(ETH_P_ARP);
+	addr.sll_ifindex = m_outputInterface;
 	if (bind(s, reinterpret_cast<const struct sockaddr *>(&addr), sizeof(addr)) == -1)
-		syslog(LOG_ERR, "Error binding interface: %m");
+		syslog(LOG_ERR, "Error binding to interface: %m");
 
 	// Enable broadcast
 	int val = 1;
 	if (setsockopt(s, SOL_SOCKET, SO_BROADCAST, &val, sizeof(val)) == -1)
 		syslog(LOG_ERR, "Error enabling ARP broadcast: %m");
 
-	// Prepare for broadcast destination
-	addr.sll_halen = 6;
-	static const std::uint8_t broadcastAddr[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-	std::memcpy(addr.sll_addr, broadcastAddr, 6);
-
 	// Fill the basic of the ARP packet
-	struct
-	{
-		struct arphdr hdr;
-		std::uint8_t body[20];
-	} packet;
-
-	packet.hdr.ar_hrd = htons(ARPHRD_ETHER);
-	packet.hdr.ar_pro = htons(ETHERTYPE_IP);
-	packet.hdr.ar_hln = 6;
-	packet.hdr.ar_pln = 4;
-	packet.hdr.ar_op = htons(ARPOP_REPLY);
-
-	static const std::uint8_t mac[] = {0x00, 0x00, 0x5E, 0x00, 0x01, 0x00};
-	std::memcpy(packet.body, mac, 5);
-	packet.body[5] = virtualRouterId();
-	std::memset(packet.body + 10, 0, 10);
+	std::uint8_t buffer[42];
+	std::memset(buffer, 0xFF, 6);
+	std::memcpy(buffer + 6, m_mac, 6);
+	*reinterpret_cast<std::uint16_t *>(buffer + 12) = htons(ETH_P_ARP);
+	
+	*reinterpret_cast<std::uint16_t *>(buffer + 14) = htons(ARPHRD_ETHER);
+	*reinterpret_cast<std::uint16_t *>(buffer + 16) = htons(ETH_P_IP);
+	buffer[18] = 6;
+	buffer[19] = 4;
+	*reinterpret_cast<std::uint16_t *>(buffer + 20) = htons(ARPOP_REPLY);
+	std::memcpy(buffer + 22, m_mac, 6);
+	std::memset(buffer + 32, 0, 6);
 
 	for (AddrList::const_iterator addr = m_addrs.begin(); addr != m_addrs.end(); ++addr)
 	{
 		// Fill with the IPv4 address
-		*reinterpret_cast<std::uint32_t *>(packet.body + 10) = addr->ipv4.s_addr;
+		*reinterpret_cast<std::uint32_t *>(buffer + 28) = addr->ipv4.s_addr;
+		*reinterpret_cast<std::uint32_t *>(buffer + 38) = addr->ipv4.s_addr;
 
-		if (sendto(s, &packet, 28, 0, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) == -1)
+		if (write(s, buffer, 42) == -1)
 			syslog(LOG_ERR, "Error sending graticious ARP: %m");
 	}
 
@@ -420,26 +443,39 @@ bool Vrrp::joinSolicitedNodeMulticasts ()
 
 bool Vrrp::setVirtualMac ()
 {
-	// TODO
-	return false;
+	if (m_outputInterface == m_interface)
+		return Netlink::setMac(m_outputInterface, m_mac);
+	else
+		return Netlink::toggleInterface(m_outputInterface, true);
 }
 
 bool Vrrp::setDefaultMac ()
 {
-	// TODO
-	return false;
-}
+	if (m_outputInterface == m_interface)
+	{
+		struct
+		{
+			std::uint32_t cmd;
+			std::uint32_t size;
+			std::uint8_t mac[6];
+		} packet;
+		packet.cmd = ETHTOOL_GPERMADDR;
+		packet.size = 6;
+		
+		struct ifreq req;
+		if_indextoname(m_interface, req.ifr_ifrn.ifrn_name);
+		req.ifr_ifru.ifru_data = reinterpret_cast<__caddr_t>(&packet);
 
-bool Vrrp::addMacvlanInterface ()
-{
-	// TODO
-	return false;
-}
+		if (ioctl(m_socket, SIOCETHTOOL, &req) == -1)
+		{
+			syslog(LOG_ERR, "Error getting permanent hardware address: %m");
+			return false;
+		}
 
-bool Vrrp::removeMacvlanInterface ()
-{
-	// TODO
-	return false;
+		return Netlink::setMac(m_outputInterface, packet.mac);
+	}
+	else
+		return Netlink::toggleInterface(m_outputInterface, false);
 }
 
 bool Vrrp::addIpAddresses ()
@@ -460,14 +496,12 @@ bool Vrrp::removeIpAddresses ()
 
 bool Vrrp::addIpAddress (const Addr &addr)
 {
-	// TODO
-	return false;
+	return Netlink::addIpAddress(m_outputInterface, addr, m_family);
 }
 
 bool Vrrp::removeIpAddress (const Addr &addr)
 {
-	// TODO
-	return false;
+	return Netlink::removeIpAddress(m_outputInterface, addr, m_family);
 }
 
 
@@ -539,6 +573,19 @@ void Vrrp::setAcceptMode (bool enabled)
 void Vrrp::setState (State state)
 {
 	m_state = state;
+	if (state == Master)
+	{
+		if (m_outputInterface != m_interface)
+			Netlink::toggleInterface(m_outputInterface, true);
+		setVirtualMac();
+		addIpAddresses();
+		sendAdvertisement();
+	}
+	else
+	{
+		removeIpAddresses();
+		setDefaultMac();
+	}
 }
 
 bool Vrrp::addAddress (const char *address)
@@ -557,4 +604,46 @@ bool Vrrp::removeAddress (const char *address)
 {
 	// TODO
 	return false;
+}
+
+std::uint16_t Vrrp::checksum (const void *packet, unsigned int size, const SockAddr &srcAddr, const SockAddr &dstAddr) const
+{
+	std::uint8_t pseudoHeader[40];
+	unsigned int pseudoHeaderSize;
+	if (m_family == AF_INET)
+	{
+		std::memcpy(pseudoHeader, &srcAddr.ipv4.sin_addr, 4);
+		std::memcpy(pseudoHeader + 4, &dstAddr.ipv4.sin_addr, 4);
+		pseudoHeader[8] = 0;
+		pseudoHeader[9] = 112;
+		*reinterpret_cast<std::uint16_t *>(pseudoHeader + 10) = htons(size);
+		pseudoHeaderSize = 12;
+	}
+	else // if (m_family == AF_INET6)
+	{
+		std::memcpy(pseudoHeader, &srcAddr.ipv6.sin6_addr, 16);
+		std::memcpy(pseudoHeader + 16, &dstAddr.ipv6.sin6_addr, 16);
+		*reinterpret_cast<std::uint32_t *>(pseudoHeader + 32) = htonl(size);
+		*reinterpret_cast<std::uint32_t *>(pseudoHeader + 36) = htonl(112);
+		pseudoHeaderSize = 40;
+	}
+
+	std::uint32_t sum = 0;
+
+	// Checksum pseudo header
+	const std::uint16_t *ptr = reinterpret_cast<const std::uint16_t *>(pseudoHeader);
+	for (unsigned int i = 0; i != pseudoHeaderSize / 2; ++i, ++ptr)
+		sum += ntohs(*ptr);
+
+	// Checksum packet
+	ptr = reinterpret_cast<const std::uint16_t *>(packet);
+	for (unsigned int i = 0; i != size / 2; ++i, ++ptr)
+		sum += ntohs(*ptr);
+
+	while (sum >> 16)
+		sum = (sum & 0xFFFF) + (sum >> 16);
+
+	sum = (~sum & 0xFFFF);
+
+	return htons(sum & 0xFFFF);
 }
