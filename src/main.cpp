@@ -18,6 +18,7 @@
 
 #include "mainloop.h"
 #include "vrrp.h"
+#include "ipaddress.h"
 
 #include <arpa/inet.h>
 #include <syslog.h>
@@ -26,10 +27,8 @@ int main ()
 {
 	openlog("openvrrp", LOG_PERROR, LOG_DAEMON);
 
-	Addr addr;
-	inet_pton(AF_INET, "192.168.1.3", &addr.ipv4);
-	Vrrp vrrp("eth0", AF_INET, addr, 1);
-	vrrp.addAddress("192.168.2.220");
+	Vrrp vrrp("eth0", AF_INET, "192.168.1.3", 1);
+	vrrp.addIpAddress("192.168.2.220");
 
 	return MainLoop::run() ? 0 : -1;
 }

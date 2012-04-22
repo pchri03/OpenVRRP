@@ -16,49 +16,57 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef INCLUDE_OPENVRRP_IP_H
-#define INCLUDE_OPENVRRP_IP_H
+#ifndef INCLUDE_OPENVRRP_IPADDRESS_H
+#define INCLUDE_OPENVRRP_IPADDRESS_H
 
 #include <string>
 #include <cstdint>
 
 #include <netinet/in.h>
 
-class Ip
+class IpAddress
 {
 	public:
-		Ip (const char *address);
-		Ip (const void *data, int family);
-		Ip (const Ip &other);
-		Ip ();
+		IpAddress (const char *address);
+		IpAddress (const void *data, int family);
+		IpAddress ();
 
-		~Ip ()
+		~IpAddress ()
 		{
 		}
 
-		bool operator < (const Ip &other) const;
-		bool operator == (const Ip &other) const;
-		bool operator != (const Ip &other) const
+		bool operator < (const IpAddress &other) const;
+		bool operator == (const IpAddress &other) const;
+		bool operator != (const IpAddress &other) const
 		{
 			return !(*this == other);
 		}
 
 		unsigned int size () const
 		{
-			return familySize(m_family);
+			return familySize(m_addr.common.sa_family);
 		}
 
 		const void *data () const
 		{
-			return m_buffer;
+			if (m_addr.common.sa_family == AF_INET)
+				return &m_addr.ipv4.sin_addr;
+			else if (m_addr.common.sa_family == AF_INET6)
+				return &m_addr.ipv6.sin6_addr;
+			else
+				return 0;
 		}
 
 		int family () const
 		{
-			return m_family;
+			return m_addr.common.sa_family;
 		}
 
 		std::string toString () const;
+
+		socklen_t socketAddressSize () const;
+		const sockaddr *socketAddress () const;
+		sockaddr *socketAddress ();
 
 	private:
 		static unsigned int familySize (int family)
@@ -72,8 +80,12 @@ class Ip
 		}
 		
 	private:
-		int m_family;
-		std::uint8_t m_buffer[16];
+		union
+		{
+			sockaddr common;
+			sockaddr_in ipv4;
+			sockaddr_in6 ipv6;
+		} m_addr;
 };
 
 

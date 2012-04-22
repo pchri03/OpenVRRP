@@ -37,9 +37,10 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-Vrrp::Vrrp (const char *interface, int family, const Addr &primaryAddr, std::uint8_t virtualRouterId, std::uint8_t priority) :
+Vrrp::Vrrp (const char *interface, int family, const IpAddress &primaryAddr, std::uint8_t virtualRouterId, std::uint8_t priority) :
 	m_virtualRouterId(virtualRouterId),
 	m_priority(priority),
+	m_primaryIpAddress(primaryAddr),
 	m_advertisementInterval(1000),
 	m_masterAdvertisementInterval(m_advertisementInterval),
 	m_preemptMode(true),
@@ -55,25 +56,15 @@ Vrrp::Vrrp (const char *interface, int family, const Addr &primaryAddr, std::uin
 	m_mac[4] = (family == AF_INET ? 1 : 2);
 	m_mac[5] = virtualRouterId;
 
+	if (family == AF_INET)
+		m_multicastAddress = IpAddress("224.0.0.18");
+	else // if (family == AF_INET6)
+		m_multicastAddress = IpAddress("FF02::12");
+
 	m_interface = if_nametoindex(interface);
 	m_outputInterface = Netlink::addMacvlanInterface(m_interface, m_mac);
-	if (m_outputInterface == 0)
+	if (m_outputInterface < 0)
 		m_outputInterface = m_interface;
-
-	// Initialize m_primaryAddr
-	m_primaryAddr.common.sa_family = m_family;
-	if (m_family == AF_INET)
-	{
-		m_primaryAddr.ipv4.sin_port = 0;
-		m_primaryAddr.ipv4.sin_addr.s_addr = primaryAddr.ipv4.s_addr;
-	}
-	else // if (m_family == AF_INET6)
-	{
-		m_primaryAddr.ipv6.sin6_port = 0;
-		m_primaryAddr.ipv6.sin6_flowinfo = 0;
-		std::memcpy(&m_primaryAddr.ipv6.sin6_addr, &primaryAddr.ipv6, 16);
-		m_primaryAddr.ipv6.sin6_scope_id = m_interface;
-	}
 
 	initSocket();
 	startup();
@@ -102,7 +93,7 @@ bool Vrrp::initSocket ()
 	}
 
 	// Bind to interface
-	if (bind(m_socket, &m_primaryAddr.common, sizeof(m_primaryAddr)) == -1)
+	if (bind(m_socket, m_primaryIpAddress.socketAddress(), m_primaryIpAddress.socketAddressSize()) == -1)
 	{
 		syslog(LOG_ERR, "Error binding to address: %m");
 		return false;
@@ -250,10 +241,10 @@ void Vrrp::onVrrpPacket ()
 {
 	syslog(LOG_DEBUG, "Vrrp::onVrrpPacket()");
 
-	SockAddr addr;
-	socklen_t addrlen = sizeof(addr);
+	IpAddress addr;
+	socklen_t addrlen = addr.size();
 	ssize_t size;
-	while ((size = recvfrom(m_socket, m_buffer, sizeof(m_buffer), 0, &addr.common, &addrlen)) == -1 && errno == EINTR);
+	while ((size = recvfrom(m_socket, m_buffer, sizeof(m_buffer), 0, addr.socketAddress(), &addrlen)) == -1 && errno == EINTR);
 
 	if (size > 0)
 	{
@@ -274,7 +265,7 @@ void Vrrp::onVrrpPacket ()
 		std::uint8_t addrCount = m_buffer[3];
 		std::uint16_t maxAdvertisementInterval = ((std::uint16_t)(m_buffer[4] & 0x0F) << 8) | m_buffer[5];
 
-		if (checksum(m_buffer, size, addr, m_primaryAddr) != 0)
+		if (checksum(m_buffer, size, addr, m_primaryIpAddress) != 0)
 			return;
 
 		if (m_state == Backup)
@@ -346,30 +337,15 @@ bool Vrrp::sendAdvertisement (int priority)
 	}
 
 	std::uint8_t *ptr = m_buffer + 8;
-	for (AddrList::const_iterator addr = m_addrs.begin(); addr != m_addrs.end(); ++addr)
+	for (IpAddressList::const_iterator addr = m_addrs.begin(); addr != m_addrs.end(); ++addr)
 	{
-		std::memcpy(ptr, &(*addr), addrSize);
-		ptr += addrSize;
+		std::memcpy(ptr, addr->data(), addr->size());
+		ptr += addr->size();
 	}
 
-	SockAddr addr;
-	addr.common.sa_family = m_family;
-	if (m_family == AF_INET)
-	{
-		addr.ipv4.sin_port = 0;
-		inet_pton(AF_INET, "224.0.0.18", &addr.ipv4.sin_addr);
-	}
-	else // if (m_family == AF_INET6)
-	{
-		addr.ipv6.sin6_port = 0;
-		addr.ipv6.sin6_flowinfo = 0; // TODO
-		inet_pton(AF_INET6, "FF02::12", &addr.ipv6.sin6_addr);
-		addr.ipv6.sin6_scope_id = m_outputInterface;
-	}
+	*reinterpret_cast<std::uint16_t *>(m_buffer + 6) = checksum(m_buffer, totalSize, m_primaryIpAddress, m_multicastAddress);
 
-	*reinterpret_cast<std::uint16_t *>(m_buffer + 6) = checksum(m_buffer, totalSize, m_primaryAddr, addr);
-
-	if (sendto(m_socket, m_buffer, totalSize, 0, &addr.common, sizeof(addr)) == -1)
+	if (sendto(m_socket, m_buffer, totalSize, 0, m_multicastAddress.socketAddress(), m_multicastAddress.socketAddressSize()) == -1)
 	{
 		syslog(LOG_ERR, "Error sending VRRP advertisement: %m");
 		return false;
@@ -416,11 +392,11 @@ bool Vrrp::sendARPs ()
 	std::memcpy(buffer + 22, m_mac, 6);
 	std::memset(buffer + 32, 0, 6);
 
-	for (AddrList::const_iterator addr = m_addrs.begin(); addr != m_addrs.end(); ++addr)
+	for (IpAddressList::const_iterator addr = m_addrs.begin(); addr != m_addrs.end(); ++addr)
 	{
 		// Fill with the IPv4 address
-		*reinterpret_cast<std::uint32_t *>(buffer + 28) = addr->ipv4.s_addr;
-		*reinterpret_cast<std::uint32_t *>(buffer + 38) = addr->ipv4.s_addr;
+		*reinterpret_cast<std::uint32_t *>(buffer + 28) = *reinterpret_cast<const std::uint32_t *>(addr->data());
+		*reinterpret_cast<std::uint32_t *>(buffer + 38) = *reinterpret_cast<const std::uint32_t *>(addr->data());;
 
 		if (write(s, buffer, 42) == -1)
 			syslog(LOG_ERR, "Error sending graticious ARP: %m");
@@ -481,29 +457,18 @@ bool Vrrp::setDefaultMac ()
 bool Vrrp::addIpAddresses ()
 {
 	bool ret = true;
-	for (AddrList::const_iterator addr = m_addrs.begin(); addr != m_addrs.end(); ++addr)
-		ret &= addIpAddress(*addr);
+	for (IpAddressList::const_iterator addr = m_addrs.begin(); addr != m_addrs.end(); ++addr)
+		ret &= (Netlink::addIpAddress(m_outputInterface, *addr));
 	return ret;
 }
 
 bool Vrrp::removeIpAddresses ()
 {
 	bool ret = true;
-	for (AddrList::const_iterator addr = m_addrs.begin(); addr != m_addrs.end(); ++addr)
-		ret &= removeIpAddress(*addr);
+	for (IpAddressList::const_iterator addr = m_addrs.begin(); addr != m_addrs.end(); ++addr)
+		ret &= (Netlink::removeIpAddress(m_outputInterface, *addr));
 	return ret;
 }
-
-bool Vrrp::addIpAddress (const Addr &addr)
-{
-	return Netlink::addIpAddress(m_outputInterface, addr, m_family);
-}
-
-bool Vrrp::removeIpAddress (const Addr &addr)
-{
-	return Netlink::removeIpAddress(m_outputInterface, addr, m_family);
-}
-
 
 std::uint8_t Vrrp::virtualRouterId () const
 {
@@ -588,32 +553,28 @@ void Vrrp::setState (State state)
 	}
 }
 
-bool Vrrp::addAddress (const char *address)
+bool Vrrp::addIpAddress (const IpAddress &address)
 {
-	Addr addr;
-	if (inet_pton(m_family, address, &addr) == 1)
-	{
-		m_addrs.push_back(addr);
-		return true;
-	}
-	else
+	if (address.family() != m_family)
 		return false;
+	m_addrs.push_back(address);
+	return true;
 }
 
-bool Vrrp::removeAddress (const char *address)
+bool Vrrp::removeIpAddress (const IpAddress &address)
 {
 	// TODO
 	return false;
 }
 
-std::uint16_t Vrrp::checksum (const void *packet, unsigned int size, const SockAddr &srcAddr, const SockAddr &dstAddr) const
+std::uint16_t Vrrp::checksum (const void *packet, unsigned int size, const IpAddress &srcAddr, const IpAddress &dstAddr) const
 {
 	std::uint8_t pseudoHeader[40];
 	unsigned int pseudoHeaderSize;
 	if (m_family == AF_INET)
 	{
-		std::memcpy(pseudoHeader, &srcAddr.ipv4.sin_addr, 4);
-		std::memcpy(pseudoHeader + 4, &dstAddr.ipv4.sin_addr, 4);
+		std::memcpy(pseudoHeader, srcAddr.data(), 4);
+		std::memcpy(pseudoHeader + 4, dstAddr.data(), 4);
 		pseudoHeader[8] = 0;
 		pseudoHeader[9] = 112;
 		*reinterpret_cast<std::uint16_t *>(pseudoHeader + 10) = htons(size);
@@ -621,8 +582,8 @@ std::uint16_t Vrrp::checksum (const void *packet, unsigned int size, const SockA
 	}
 	else // if (m_family == AF_INET6)
 	{
-		std::memcpy(pseudoHeader, &srcAddr.ipv6.sin6_addr, 16);
-		std::memcpy(pseudoHeader + 16, &dstAddr.ipv6.sin6_addr, 16);
+		std::memcpy(pseudoHeader, srcAddr.data(), 16);
+		std::memcpy(pseudoHeader + 16, dstAddr.data(), 16);
 		*reinterpret_cast<std::uint32_t *>(pseudoHeader + 32) = htonl(size);
 		*reinterpret_cast<std::uint32_t *>(pseudoHeader + 36) = htonl(112);
 		pseudoHeaderSize = 40;

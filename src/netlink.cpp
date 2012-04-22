@@ -18,14 +18,77 @@
 
 #include "netlink.h"
 
-#include <syslog.h>
+#include <cstring>
 
-bool Netlink::modifyIpAddress (int interface, const Ip &ip, bool add)
+#include <syslog.h>
+#include <net/if.h>
+#include <net/if_arp.h>
+#include <linux/rtnetlink.h>
+
+int Netlink::sendNetlinkPacket (const void *data, unsigned int size)
 {
-	Attribute attr(IFA_LOCAL, ip->data(), ip->size());
+	int s = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
+	if (s == -1)
+	{
+		std::perror("socket");
+		return -1;
+	}
+
+	sockaddr_nl addr;
+	addr.nl_family = AF_NETLINK;
+	addr.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR;
+	if (bind(s, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) == -1)
+	{
+		std::perror("bind");
+		close(s);
+		return -1;
+	}
+
+	if (write(s, data, size) == -1)
+	{
+		std::perror("write");
+		close(s);
+		return -1;
+	}
+
+	uint8_t buffer[1024];
+	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer);
+	int ret = 0;
+	do
+	{
+		unsigned int size = read(s, buffer, sizeof(buffer));
+		if (s == (unsigned int)-1)
+		{
+			std::perror("write");
+			return -1;
+		}
+
+		std::printf("Received %i bytes\n", size);
+
+		if (hdr->nlmsg_type == NLMSG_ERROR)
+		{
+			const nlmsgerr *err = reinterpret_cast<const nlmsgerr *>(buffer + 16);
+			std::printf("Got error %i (%s)\n", err->error, strerror(0 - err->error));
+			ret = err->error;
+		}
+		else if (hdr->nlmsg_type == RTM_NEWLINK)
+		{
+			const ifinfomsg *msg = reinterpret_cast<const ifinfomsg *>(buffer + 16);
+			ret = msg->ifi_index;
+		}
+	} while (hdr->nlmsg_flags & NLM_F_MULTI && hdr->nlmsg_type != NLMSG_DONE);
+
+	close(s);
+
+	return ret;
+}
+
+bool Netlink::modifyIpAddress (int interface, const IpAddress &ip, bool add)
+{
+	Attribute attr(IFA_LOCAL, ip.data(), ip.size());
 
 	std::vector<std::uint8_t> buffer;
-	buffer.reserve(16 + 16 + attr.size());
+	buffer.resize(16 + 16 + attr.size());
 
 	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer.data());
 	hdr->nlmsg_len = buffer.size();
@@ -43,7 +106,85 @@ bool Netlink::modifyIpAddress (int interface, const Ip &ip, bool add)
 
 	attr.toPacket(buffer.data() + 32);
 
-	return sendNetlinkPacket(buffer.data(), buffer.size()) == 0;
+	return sendNetlinkPacket(buffer.data(), buffer.size()) >= 0;
+}
+
+int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress)
+{
+	// IFLA_ADDRESS = macAddress
+	// IFLA_LINK = interface
+	// IFLA_LINKINFO = {
+	//   IFLA_INFO_KIND = macvlan
+	//   IFLA_INFO_DATA {
+	//     IFLA_MACVLAN_MODE = MACVLAN_MODE_PRIVATE
+	//   }
+	// }
+
+	Attribute attr;
+
+	Attribute address(IFLA_ADDRESS, macAddress, 6);
+	attr.addAttribute(&address);
+
+	Attribute link(IFLA_LINK, (std::uint32_t)interface);
+	attr.addAttribute(&link);
+
+	Attribute linkinfo(IFLA_LINKINFO);
+	attr.addAttribute(&linkinfo);
+
+	Attribute kind(IFLA_INFO_KIND, "macvlan", 8);
+	linkinfo.addAttribute(&kind);
+
+	Attribute data(IFLA_INFO_DATA);
+	linkinfo.addAttribute(&data);
+
+	Attribute mode(IFLA_MACVLAN_MODE, (std::uint32_t)MACVLAN_MODE_PRIVATE);
+	data.addAttribute(&mode);
+
+	std::vector<std::uint8_t> buffer;
+	buffer.resize(16 + 16 + attr.size());
+
+	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer.data());
+	hdr->nlmsg_len = buffer.size();
+	hdr->nlmsg_type = RTM_NEWLINK;
+	hdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
+	hdr->nlmsg_seq = 1;
+	hdr->nlmsg_pid = getpid();
+
+	ifinfomsg *msg = reinterpret_cast<ifinfomsg *>(buffer.data() + 16);
+	msg->ifi_family = AF_UNSPEC;
+	msg->__ifi_pad = 0;
+	msg->ifi_type = ARPHRD_ETHER;
+	msg->ifi_index = 0;
+	msg->ifi_flags = 0;
+	msg->ifi_change = 0;
+
+	attr.toPacket(buffer.data() + 32);
+
+	// TODO - Get link
+
+	return sendNetlinkPacket(buffer.data(), buffer.size());
+}
+
+bool Netlink::removeInterface (int interface)
+{
+	std::uint8_t buffer[16 + 16];
+
+	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer);
+	hdr->nlmsg_len = sizeof(buffer);
+	hdr->nlmsg_type = RTM_DELLINK;
+	hdr->nlmsg_flags = NLM_F_REQUEST;
+	hdr->nlmsg_seq = 1;
+	hdr->nlmsg_pid = getpid();
+
+	ifinfomsg *msg = reinterpret_cast<ifinfomsg *>(buffer + 16);
+	msg->ifi_family = AF_UNSPEC;
+	msg->__ifi_pad = 0;
+	msg->ifi_type = ARPHRD_ETHER;
+	msg->ifi_index = interface;
+	msg->ifi_flags = 0;
+	msg->ifi_change = 0;
+
+	return sendNetlinkPacket(buffer, sizeof(buffer));
 }
 
 Netlink::Attribute::Attribute (std::uint16_t type, const void *data, unsigned int size) :
@@ -51,28 +192,40 @@ Netlink::Attribute::Attribute (std::uint16_t type, const void *data, unsigned in
 {
 	if (size > 0)
 	{
-		m_buffer.reserve(size);
+		m_buffer.resize(size);
 		std::memcpy(m_buffer.data(), data, size);
 	}
+}
+
+Netlink::Attribute::Attribute (std::uint16_t type, std::uint32_t value) :
+	m_type(type)
+{
+	m_buffer.resize(4);
+	*reinterpret_cast<std::uint32_t *>(m_buffer.data()) =  value;
+}
+
+Netlink::Attribute::Attribute () :
+	m_type(0)
+{
 }
 
 Netlink::Attribute::~Attribute ()
 {
 }
 
-Netlink::Attribute::addAttribute (const Attribute &attribute)
+void Netlink::Attribute::addAttribute (const Attribute *attribute)
 {
 	m_attributes.push_back(attribute);
 }
 
 unsigned int Netlink::Attribute::size () const
 {
-	unsigned int size = 4;
+	unsigned int size = (m_type == 0 ? 0 : 4);
 	if (m_attributes.size() > 0)
 	{
 		for (AttributeList::const_iterator attribute = m_attributes.begin(); attribute != m_attributes.end(); ++attribute)
 		{
-			size += attribute->size();
+			size += (*attribute)->size();
 		}
 	}
 	else
@@ -88,152 +241,73 @@ unsigned int Netlink::Attribute::size () const
 void Netlink::Attribute::toPacket (void *buffer) const
 {
 	std::uint8_t *ptr = reinterpret_cast<std::uint8_t *>(buffer);
-	*reinterpret_cast<std::uint16_t *>(ptr) = size();
-	*reinterpret_cast<std::uint16_t *>(ptr + 2) = m_type;
-	if (m_attribute.size() > 0)
+	if (m_type != 0)
 	{
+		*reinterpret_cast<std::uint16_t *>(ptr) = size();
+		*reinterpret_cast<std::uint16_t *>(ptr + 2) = m_type;
 		ptr += 4;
+	}
+	if (m_attributes.size() > 0)
+	{
 		for (AttributeList::const_iterator attribute = m_attributes.begin(); attribute != m_attributes.end(); ++attribute)
 		{
-			attribute->comple(ptr);
-			ptr += attribute->size();
+			(*attribute)->toPacket(ptr);
+			ptr += (*attribute)->size();
 		}
 	}
 	else if (m_buffer.size() > 0)
 	{
-		std::memcpy(ptr + 4, m_buffer.data(), m_buffer.size());
+		std::memcpy(ptr, m_buffer.data(), m_buffer.size());
 		if (m_buffer.size() & 0x03 != 0)
-			std::memset(ptr + 4 + m_buffer.size(), 0, 4 - (m_buffer.size() & 0x03));
+			std::memset(ptr + m_buffer.size(), 0, 4 - (m_buffer.size() & 0x03));
 	}
-}
-
-/*
-#include <netlink/addr.h>
-#include <netlink/route/addr.h>
-#include <netlink/route/link.h>
-#include <netlink/version.h>
-
-nl_sock *Netlink::m_socket = 0;
-
-nl_sock *Netlink::netlinkSocket ()
-{
-	if (m_socket == 0)
-	{
-		m_socket = nl_socket_alloc();
-		nl_connect(m_socket, NETLINK_ROUTE);
-	}
-
-	return m_socket;
-}
-
-bool Netlink::addIpAddress (int interface, const Addr &addr, int family)
-{
-	nl_addr *nlAddr = nl_addr_build(family, const_cast<void *>(reinterpret_cast<const void *>(&addr)), family == AF_INET ? 4 : 16);
-	rtnl_addr *rtnlAddr = rtnl_addr_alloc();
-
-	rtnl_addr_set_ifindex(rtnlAddr, interface);
-	rtnl_addr_set_local(rtnlAddr, nlAddr);
-
-	int ret = rtnl_addr_add(netlinkSocket(), rtnlAddr, 0);
-
-	rtnl_addr_put(rtnlAddr);
-	nl_addr_put(nlAddr);
-
-	return (ret == 0);
-}
-
-bool Netlink::removeIpAddress (int interface, const Addr &addr, int family)
-{
-	nl_addr *nlAddr = nl_addr_build(family, const_cast<void *>(reinterpret_cast<const void *>(&addr)), family == AF_INET ? 4 : 16);
-	rtnl_addr *rtnlAddr = rtnl_addr_alloc();
-
-	rtnl_addr_set_ifindex(rtnlAddr, interface);
-	rtnl_addr_set_local(rtnlAddr, nlAddr);
-	
-	int ret = rtnl_addr_delete(netlinkSocket(), rtnlAddr, 0);
-
-	rtnl_addr_put(rtnlAddr);
-	nl_addr_put(nlAddr);
-
-	return (ret == 0);
-}
-
-int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress)
-{
-	nl_addr *addr = nl_addr_build(AF_LLC, const_cast<void *>(reinterpret_cast<const void *>(macAddress)), 6);
-	rtnl_link *link = rtnl_link_alloc();
-
-	rtnl_link_set_addr(link, addr);
-	rtnl_link_set_link(link, interface);
-#ifdef LIBNL_VER_NUM
-	rtnl_link_set_type(link, "macvlan");
-#else
-	rtnl_link_set_info_type(link, "macvlan");
-#endif
-
-	int ret = rtnl_link_add(netlinkSocket(), link, 0);
-	if (ret == 0)
-		ret = rtnl_link_get_ifindex(link);
-	else
-	{
-		syslog(LOG_ERR, "Error creating MACVLAN interface: %s", nl_geterror(ret));
-		ret = 0;
-	}
-	
-	rtnl_link_put(link);
-	nl_addr_put(addr);
-
-	return ret;
-}
-
-bool Netlink::removeInterface (int interface)
-{
-	rtnl_link *link = rtnl_link_alloc();
-	rtnl_link_set_ifindex(link, interface);
-
-	int ret = rtnl_link_delete(netlinkSocket(), link);
-
-	rtnl_link_put(link);
-
-	return (ret == 0);
-}
-
-bool Netlink::toggleInterface (int interface, bool up)
-{
-	nl_cache *cache;
-	rtnl_link_alloc_cache(netlinkSocket(), AF_UNSPEC, &cache);
-	rtnl_link *oldLink = rtnl_link_get(cache, interface);
-	rtnl_link *link = rtnl_link_alloc();
-	if (up)
-		rtnl_link_set_flags(link, IFF_UP);
-	else
-		rtnl_link_unset_flags(link, IFF_UP);
-
-	int ret = rtnl_link_change(netlinkSocket(), oldLink, link, 0);
-
-	rtnl_link_put(link);
-	rtnl_link_put(oldLink);
-	nl_cache_free(cache);
-
-	return (ret == 0);
 }
 
 bool Netlink::setMac (int interface, const std::uint8_t *macAddress)
 {
-	nl_addr *addr = nl_addr_build(AF_LLC, const_cast<void *>(reinterpret_cast<const void *>(macAddress)), 6);
-	
-	nl_cache *cache;
-	rtnl_link_alloc_cache(netlinkSocket(), AF_UNSPEC, &cache);
-	rtnl_link *oldLink = rtnl_link_get(cache, interface);
-	rtnl_link *link = rtnl_link_alloc();
-	rtnl_link_set_addr(link, addr);
-	int ret = rtnl_link_change(netlinkSocket(), oldLink, link, 0);
+	Attribute attr(IFLA_ADDRESS, macAddress, 6);
 
-	rtnl_link_put(link);
-	rtnl_link_put(oldLink);
-	nl_cache_free(cache);
-	nl_addr_put(addr);
+	std::vector<std::uint8_t> buffer;
+	buffer.resize(16 + 16 + attr.size());
 
-	return (ret == 0);
+	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer.data());
+	hdr->nlmsg_len = buffer.size();
+	hdr->nlmsg_type = RTM_SETLINK;
+	hdr->nlmsg_flags = NLM_F_REQUEST;
+	hdr->nlmsg_seq = 1;
+	hdr->nlmsg_pid = getpid();
+
+	ifinfomsg *msg = reinterpret_cast<ifinfomsg *>(buffer.data() + 16);
+	msg->ifi_family = AF_UNSPEC;
+	msg->__ifi_pad = 0;
+	msg->ifi_type = ARPHRD_ETHER;
+	msg->ifi_index = interface;
+	msg->ifi_flags = 0;
+	msg->ifi_change = 0;
+
+	attr.toPacket(buffer.data() + 32);
+
+	return sendNetlinkPacket(buffer.data(), buffer.size()) >= 0;
 }
-*/
+
+bool Netlink::toggleInterface (int interface, bool up)
+{
+	std::uint8_t buffer[16 + 16];
+
+	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer);
+	hdr->nlmsg_len = sizeof(buffer);
+	hdr->nlmsg_type = RTM_SETLINK;
+	hdr->nlmsg_flags = NLM_F_REQUEST;
+	hdr->nlmsg_seq = 1;
+	hdr->nlmsg_pid = getpid();
+
+	ifinfomsg *msg = reinterpret_cast<ifinfomsg *>(buffer + 16);
+	msg->ifi_family = AF_UNSPEC;
+	msg->__ifi_pad = 0;
+	msg->ifi_type = ARPHRD_ETHER;
+	msg->ifi_index = interface;
+	msg->ifi_flags = (up ? IFF_UP : 0);
+	msg->ifi_change = IFF_UP;
+
+	return sendNetlinkPacket(buffer, sizeof(buffer)) >= 0;
+}

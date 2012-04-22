@@ -20,7 +20,7 @@
 #define INCLUDE_VRRP_H
 
 #include "timer.h"
-#include "util.h"
+#include "ipaddress.h"
 
 #include <cstdint>
 #include <list>
@@ -30,7 +30,7 @@
 class Vrrp
 {
 	public:
-		Vrrp (const char *interface, int family, const Addr &primaryAddr, std::uint8_t virtualRouterId, std::uint8_t priority = 100);
+		Vrrp (const char *interface, int family, const IpAddress &primaryIpAddress, std::uint8_t virtualRouterId, std::uint8_t priority = 100);
 		~Vrrp();
 
 		std::uint8_t virtualRouterId () const;
@@ -53,8 +53,8 @@ class Vrrp
 		bool acceptMode () const;
 		void setAcceptMode (bool enabled);
 
-		bool addAddress (const char *address);
-		bool removeAddress (const char *address);
+		bool addIpAddress (const IpAddress &address);
+		bool removeIpAddress (const IpAddress &address);
 
 	private:
 		enum State
@@ -89,12 +89,10 @@ class Vrrp
 		bool addMacvlanInterface ();
 		bool removeMacvlanInterface ();
 
-		bool addIpAddress (const Addr &addr);
-		bool removeIpAddress (const Addr &addr);
 		bool addIpAddresses ();
 		bool removeIpAddresses ();
 
-		std::uint16_t checksum (const void *packet, unsigned int size, const SockAddr &srcAddr, const SockAddr &dstAddr) const;
+		std::uint16_t checksum (const void *packet, unsigned int size, const IpAddress &srcIpAddress, const IpAddress &dstIpAddress) const;
 
 		static void socketCallback (int, void *);
 		static void masterDownTimerCallback (Timer *, void *);
@@ -103,7 +101,8 @@ class Vrrp
 	private:
 		std::uint8_t m_virtualRouterId;
 		std::uint8_t m_priority;
-		SockAddr m_primaryAddr;
+		IpAddress m_primaryIpAddress;
+		IpAddress m_multicastAddress;
 		unsigned int m_advertisementInterval;
 		unsigned int m_masterAdvertisementInterval;
 		bool m_preemptMode;
@@ -122,8 +121,8 @@ class Vrrp
 		std::uint8_t m_buffer[1500];
 		std::uint8_t m_mac[6];
 
-		typedef std::list<Addr> AddrList;
-		std::list<Addr> m_addrs;
+		typedef std::list<IpAddress> IpAddressList;
+		std::list<IpAddress> m_addrs;
 };
 
 #endif // INCLUDE_VRRP_H
