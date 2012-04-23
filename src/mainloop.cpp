@@ -22,11 +22,13 @@
 
 #include <unistd.h>
 #include <syslog.h>
+#include <signal.h>
 #include <sys/epoll.h>
 
 int MainLoop::m_fd = -1;
 MainLoop::MonitorMap MainLoop::m_monitors;
 MainLoop::TimerMap MainLoop::m_timers;
+bool MainLoop::m_aborted = false;
 
 void MainLoop::init ()
 {
@@ -86,23 +88,37 @@ bool MainLoop::removeMonitor (int fd)
 
 bool MainLoop::run ()
 {
-	while (m_monitors.size() > 0)
+	m_aborted = false;
+	sighandler_t oldSignalHandler = signal(SIGINT, signalCallback);
+	while (m_monitors.size() > 0 && !m_aborted)
 	{
 		struct epoll_event events[16];
 		int eventCount = epoll_wait(m_fd, events, sizeof(events) / sizeof(events[0]), -1);
 
 		if (eventCount == -1)
 		{
-			syslog(LOG_ERR, "epoll_wait failed: %m");
-			return false;
+			if (errno != EINTR)
+			{
+				syslog(LOG_ERR, "epoll_wait failed: %m");
+				return false;
+			}
 		}
-
-		for (int i = 0; i != eventCount; ++i)
+		else
 		{
-			Monitor *monitor = reinterpret_cast<Monitor *>(events[i].data.ptr);
-			monitor->callback(monitor->fd, monitor->userData);
+			for (int i = 0; i != eventCount; ++i)
+			{
+				Monitor *monitor = reinterpret_cast<Monitor *>(events[i].data.ptr);
+				monitor->callback(monitor->fd, monitor->userData);
+			}
 		}
 	}
+	signal(SIGINT, oldSignalHandler);
 
 	return true;
+}
+
+void MainLoop::signalCallback (int signum)
+{
+	m_aborted = true;
+	signal(signum, signalCallback);
 }

@@ -34,6 +34,7 @@ class MainLoop
 	private:
 		static void init ();
 		static void timerCallback (int fd, Callback *callback, void *userData);
+		static void signalCallback (int signum);
 
 	private:
 		struct Monitor
@@ -55,6 +56,7 @@ class MainLoop
 		static int m_fd;
 		static MonitorMap m_monitors;
 		static TimerMap m_timers;
+		static bool m_aborted;
 };
 
 #endif
