@@ -10,7 +10,7 @@
 #include <linux/rtnetlink.h>
 #include <net/if.h>
 
-#define TEST_DELLINK
+#define TEST_NEWLINK
 
 int main ()
 {

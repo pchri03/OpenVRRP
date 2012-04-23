@@ -101,6 +101,10 @@ bool Vrrp::initSocket ()
 		return false;
 	}
 
+	// Set multicast interface
+	if (setsockopt(m_socket, IPPROTO_IP, IP_MULTICAST_IF, &m_interface, sizeof(m_interface)) == -1)
+		syslog(LOG_WARNING, "Error binding multifcast interface: %m");
+
 	// Set multicast TTL to 255
 	int val = 255;
 	if (setsockopt(m_socket, IPPROTO_IP, IP_MULTICAST_TTL, &val, sizeof(val)) == -1)

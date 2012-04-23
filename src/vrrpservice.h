@@ -16,23 +16,15 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "mainloop.h"
-#include "vrrp.h"
-#include "ipaddress.h"
+#ifndef INCLUDE_OPENVRRP_VRRPSERVICE_H
+#define INCLUDE_OPENVRRP_VRRPSERVICE_H
 
-#include <arpa/inet.h>
-#include <syslog.h>
+#include <cstdint>
 
-int main ()
+class VrrpService
 {
-	openlog("openvrrp", LOG_PERROR, LOG_DAEMON);
+	public:
+		std::uint8_t virtualRouterId () const;
+};
 
-	//Vrrp vrrp("eth0", AF_INET, "192.168.1.3", 1);
-	Vrrp vrrp1("wlan0", AF_INET, "192.168.1.108", 1);
-	vrrp1.addIpAddress("192.168.2.220");
-
-	Vrrp vrrp2("wlan0", AF_INET, "192.168.1.108", 2);
-	vrrp2.addIpAddress("192.168.3.1");
-
-	return MainLoop::run() ? 0 : -1;
-}
+#endif // INCLUDE_OPENVRRP_VRRPSERVICE_H

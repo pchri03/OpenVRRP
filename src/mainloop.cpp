@@ -112,13 +112,13 @@ bool MainLoop::run ()
 			}
 		}
 	}
-	signal(SIGINT, oldSignalHandler);
 
 	return true;
 }
 
 void MainLoop::signalCallback (int signum)
 {
+	syslog(LOG_DEBUG, "Caught signal");
 	m_aborted = true;
 	signal(signum, signalCallback);
 }

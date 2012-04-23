@@ -20,13 +20,19 @@
 
 #include <cstring>
 
+#include <cstdio>
+
 #include <syslog.h>
 #include <net/if.h>
 #include <net/if_arp.h>
 #include <linux/rtnetlink.h>
+#include <linux/sockios.h>
+#include <sys/ioctl.h>
 
 int Netlink::sendNetlinkPacket (const void *data, unsigned int size)
 {
+	std::printf("sendNetlinkPacket(%p, %u)\n", data, size);
+
 	int s = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
 	if (s == -1)
 	{
@@ -88,7 +94,7 @@ bool Netlink::modifyIpAddress (int interface, const IpAddress &ip, bool add)
 	Attribute attr(IFA_LOCAL, ip.data(), ip.size());
 
 	std::vector<std::uint8_t> buffer;
-	buffer.resize(16 + 8 + attr.size());
+	buffer.resize(16 + 8 + attr.effectiveSize());
 
 	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer.data());
 	hdr->nlmsg_len = buffer.size();
@@ -120,28 +126,28 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress)
 	//   }
 	// }
 
-	Attribute attr;
-
 	Attribute address(IFLA_ADDRESS, macAddress, 6);
-	attr.addAttribute(&address);
-
 	Attribute link(IFLA_LINK, (std::uint32_t)interface);
-	attr.addAttribute(&link);
-
 	Attribute linkinfo(IFLA_LINKINFO);
-	attr.addAttribute(&linkinfo);
-
 	Attribute kind(IFLA_INFO_KIND, "macvlan", 8);
-	linkinfo.addAttribute(&kind);
-
 	Attribute data(IFLA_INFO_DATA);
-	linkinfo.addAttribute(&data);
-
 	Attribute mode(IFLA_MACVLAN_MODE, (std::uint32_t)MACVLAN_MODE_PRIVATE);
-	data.addAttribute(&mode);
+
+	
+	Attribute attr;
+	attr.addAttribute(&address);
+	attr.addAttribute(&link);
+	attr.addAttribute(&linkinfo);
+	{
+		linkinfo.addAttribute(&kind);
+		linkinfo.addAttribute(&data);
+		{
+			data.addAttribute(&mode);
+		}
+	}
 
 	std::vector<std::uint8_t> buffer;
-	buffer.resize(16 + 16 + attr.size());
+	buffer.resize(16 + 16 + attr.effectiveSize());
 
 	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer.data());
 	hdr->nlmsg_len = buffer.size();
@@ -159,8 +165,6 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress)
 	msg->ifi_change = 0;
 
 	attr.toPacket(buffer.data() + 32);
-
-	// TODO - Get link
 
 	return sendNetlinkPacket(buffer.data(), buffer.size());
 }
@@ -183,6 +187,8 @@ bool Netlink::removeInterface (int interface)
 	msg->ifi_index = interface;
 	msg->ifi_flags = 0;
 	msg->ifi_change = 0;
+
+	syslog(LOG_DEBUG, "Removing interface %i", interface);
 
 	return sendNetlinkPacket(buffer, sizeof(buffer));
 }
@@ -225,16 +231,22 @@ unsigned int Netlink::Attribute::size () const
 	{
 		for (AttributeList::const_iterator attribute = m_attributes.begin(); attribute != m_attributes.end(); ++attribute)
 		{
-			size += (*attribute)->size();
+			size += (*attribute)->effectiveSize();
 		}
 	}
 	else
 	{
 		size += m_buffer.size();
-		if (size & 0x03)
-			size = (size & ~0x03) + 4;
 	}
 
+	return size;
+}
+
+unsigned int Netlink::Attribute::effectiveSize () const
+{
+	unsigned int size = this->size();
+	if (size & 0x03)
+		size = (size & ~0x03) + 4;
 	return size;
 }
 
@@ -252,7 +264,7 @@ void Netlink::Attribute::toPacket (void *buffer) const
 		for (AttributeList::const_iterator attribute = m_attributes.begin(); attribute != m_attributes.end(); ++attribute)
 		{
 			(*attribute)->toPacket(ptr);
-			ptr += (*attribute)->size();
+			ptr += (*attribute)->effectiveSize();
 		}
 	}
 	else if (m_buffer.size() > 0)
@@ -292,6 +304,7 @@ bool Netlink::setMac (int interface, const std::uint8_t *macAddress)
 
 bool Netlink::toggleInterface (int interface, bool up)
 {
+	/*
 	std::uint8_t buffer[16 + 16];
 
 	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer);
@@ -310,4 +323,35 @@ bool Netlink::toggleInterface (int interface, bool up)
 	msg->ifi_change = IFF_UP;
 
 	return sendNetlinkPacket(buffer, sizeof(buffer)) >= 0;
+	*/
+	ifreq ifr;
+	if_indextoname(interface, ifr.ifr_ifrn.ifrn_name);
+
+	int s = socket(PF_INET, SOCK_DGRAM, 0);
+	if (ioctl(s, SIOCGIFFLAGS, &ifr) < 0)
+	{
+		syslog(LOG_ERR, "Error getting interface flags: %m");
+		close(s);
+		return false;
+	}
+
+	short int newFlags = ifr.ifr_ifru.ifru_flags;
+	if (up)
+		newFlags |= IFF_UP;
+	else
+		newFlags &= ~IFF_UP;
+	if (newFlags != ifr.ifr_ifru.ifru_flags)
+	{
+		ifr.ifr_ifru.ifru_flags = newFlags;
+		if (ioctl(s, SIOCSIFFLAGS, &ifr) < 0)
+		{
+			syslog(LOG_ERR, "Error setting interface flags: %m");
+			close(s);
+			return false;
+		}
+	}
+
+	close(s);
+
+	return true;
 }

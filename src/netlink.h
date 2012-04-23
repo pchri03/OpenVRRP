@@ -58,6 +58,7 @@ class Netlink
 				void addAttribute (const Attribute *attribute);
 
 				unsigned int size () const;
+				unsigned int effectiveSize () const;
 				void toPacket (void *buffer) const;
 
 			private:
