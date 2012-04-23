@@ -72,6 +72,8 @@ Vrrp::Vrrp (const char *interface, int family, const IpAddress &primaryAddr, std
 
 Vrrp::~Vrrp ()
 {
+	shutdown();
+
 	if (m_socket != -1)
 	{
 		MainLoop::removeMonitor(m_socket);
