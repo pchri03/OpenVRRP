@@ -88,7 +88,7 @@ bool Netlink::modifyIpAddress (int interface, const IpAddress &ip, bool add)
 	Attribute attr(IFA_LOCAL, ip.data(), ip.size());
 
 	std::vector<std::uint8_t> buffer;
-	buffer.resize(16 + 16 + attr.size());
+	buffer.resize(16 + 8 + attr.size());
 
 	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer.data());
 	hdr->nlmsg_len = buffer.size();
@@ -104,7 +104,7 @@ bool Netlink::modifyIpAddress (int interface, const IpAddress &ip, bool add)
 	msg->ifa_scope = RT_SCOPE_LINK;
 	msg->ifa_index = interface;
 
-	attr.toPacket(buffer.data() + 32);
+	attr.toPacket(buffer.data() + 16 + 8);
 
 	return sendNetlinkPacket(buffer.data(), buffer.size()) >= 0;
 }
