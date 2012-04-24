@@ -16,21 +16,17 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef INCLUDE_OPENVRRP_VRRPSERVICE_H
-#define INCLUDE_OPENVRRP_VRRPSERVICE_H
+#ifndef INCLUDE_OPENVRRP_UTIL_H
+#define INCLUDE_OPENVRRP_UTIL_H
 
 #include <cstdint>
 
-class VrrpService
+class IpAddress;
+
+class Util
 {
 	public:
-		VrrpService (int interface, std::uint8_t virtualRouterId, int family);
-
-		std::uint8_t virtualRouterId () const;
-		void onIncomingPacket (const std::uint8_t *packet, unsigned int size);
-
-	private:
-		std::uint8_t m_virtualRouterId;
+		static std::uint16_t checksum (const void *packet, unsigned int size, const IpAddress &srcAddr, const IpAddress &dstAddr);
 };
 
-#endif // INCLUDE_OPENVRRP_VRRPSERVICE_H
+#endif // INCLUDE_OPENVRRP_UTIL_H

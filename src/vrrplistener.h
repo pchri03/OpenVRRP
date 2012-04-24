@@ -16,8 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef INCLUDE_VRRP_VRRPLISTENER_H
-#define INCLUDE_VRRP_VRRPLISTENER_H
+#ifndef INCLUDE_OPENVRRP_VRRPLISTENER_H
+#define INCLUDE_OPENVRRP_VRRPLISTENER_H
 
 #include <cstdint>
 #include <map>
@@ -43,7 +43,7 @@ class VrrpListener
 		~VrrpListener ();
 
 		void close ();		
-		void onIncomingPacket ();
+		bool onIncomingPacket ();
 		static void socketCallback (int fd, void *userData);
 	
 	private:	
@@ -52,9 +52,11 @@ class VrrpListener
 		int m_socket;
 		int m_error;
 		ServiceMap m_services;
+		std::uint8_t m_controlBuffer[512];
+		std::uint8_t m_buffer[1500];
 		static ListenerMap m_ipv4Listeners;
 		static ListenerMap m_ipv6Listeners;
 
 };
 
-#endif // INCLUDE_VRRP_VRRPLISTENER_H
+#endif // INCLUDE_OPENVRRP_VRRPLISTENER_H

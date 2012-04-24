@@ -18,6 +18,7 @@
 
 #include "vrrp.h"
 #include "mainloop.h"
+#include "util.h"
 #include "netlink.h"
 
 #include <cerrno>
@@ -575,42 +576,5 @@ bool Vrrp::removeIpAddress (const IpAddress &address)
 
 std::uint16_t Vrrp::checksum (const void *packet, unsigned int size, const IpAddress &srcAddr, const IpAddress &dstAddr) const
 {
-	std::uint8_t pseudoHeader[40];
-	unsigned int pseudoHeaderSize;
-	if (m_family == AF_INET)
-	{
-		std::memcpy(pseudoHeader, srcAddr.data(), 4);
-		std::memcpy(pseudoHeader + 4, dstAddr.data(), 4);
-		pseudoHeader[8] = 0;
-		pseudoHeader[9] = 112;
-		*reinterpret_cast<std::uint16_t *>(pseudoHeader + 10) = htons(size);
-		pseudoHeaderSize = 12;
-	}
-	else // if (m_family == AF_INET6)
-	{
-		std::memcpy(pseudoHeader, srcAddr.data(), 16);
-		std::memcpy(pseudoHeader + 16, dstAddr.data(), 16);
-		*reinterpret_cast<std::uint32_t *>(pseudoHeader + 32) = htonl(size);
-		*reinterpret_cast<std::uint32_t *>(pseudoHeader + 36) = htonl(112);
-		pseudoHeaderSize = 40;
-	}
-
-	std::uint32_t sum = 0;
-
-	// Checksum pseudo header
-	const std::uint16_t *ptr = reinterpret_cast<const std::uint16_t *>(pseudoHeader);
-	for (unsigned int i = 0; i != pseudoHeaderSize / 2; ++i, ++ptr)
-		sum += ntohs(*ptr);
-
-	// Checksum packet
-	ptr = reinterpret_cast<const std::uint16_t *>(packet);
-	for (unsigned int i = 0; i != size / 2; ++i, ++ptr)
-		sum += ntohs(*ptr);
-
-	while (sum >> 16)
-		sum = (sum & 0xFFFF) + (sum >> 16);
-
-	sum = (~sum & 0xFFFF);
-
-	return htons(sum & 0xFFFF);
+	return Util::checksum(packet, size, srcAddr, dstAddr);
 }

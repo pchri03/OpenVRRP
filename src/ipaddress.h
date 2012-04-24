@@ -68,7 +68,6 @@ class IpAddress
 		const sockaddr *socketAddress () const;
 		sockaddr *socketAddress ();
 
-	private:
 		static unsigned int familySize (int family)
 		{
 			if (family == AF_INET)
