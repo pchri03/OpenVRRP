@@ -20,6 +20,7 @@
 #define INCLUDE_OPENVRRP_IPADDRESS_H
 
 #include <string>
+#include <list>
 #include <cstdint>
 
 #include <netinet/in.h>
@@ -87,6 +88,6 @@ class IpAddress
 		} m_addr;
 };
 
-
+typedef std::list<IpAddress> IpAddressList;
 
 #endif // INCLUDE_OPENVRRP_IP_H
