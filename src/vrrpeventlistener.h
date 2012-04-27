@@ -32,7 +32,7 @@ class VrrpEventListener
 				std::uint_fast8_t virtualRouterId,
 				std::uint_fast8_t priority,
 				std::uint_fast16_t maxAdvertisementInterval,
-				const IpAddressList &addresses);
+				const IpAddressList &addresses) = 0;
 };
 
 #endif // INCLUDE_OPENVRRP_VRRPEVENTLISTENER_H

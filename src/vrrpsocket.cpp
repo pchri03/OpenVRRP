@@ -329,6 +329,7 @@ bool VrrpSocket::onSocketPacket ()
 	// Call event listener
 	listener->second->onIncomingVrrpPacket(
 			interface,
+			srcAddress,
 			virtualRouterId,
 			priority,
 			maxAdvertisementInterval,

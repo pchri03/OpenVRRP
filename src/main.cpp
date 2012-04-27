@@ -17,9 +17,10 @@
  */
 
 #include "mainloop.h"
-#include "vrrp.h"
+#include "vrrpservice.h"
 #include "ipaddress.h"
 
+#include <net/if.h>
 #include <arpa/inet.h>
 #include <syslog.h>
 
@@ -27,12 +28,10 @@ int main ()
 {
 	openlog("openvrrp", LOG_PERROR, LOG_DAEMON);
 
-	//Vrrp vrrp("eth0", AF_INET, "192.168.1.3", 1);
-	Vrrp vrrp1("wlan0", AF_INET, "192.168.1.108", 1);
-	vrrp1.addIpAddress("192.168.2.220");
-
-	Vrrp vrrp2("wlan0", AF_INET, "192.168.1.108", 2);
-	vrrp2.addIpAddress("192.168.3.1");
+	int interface = if_nametoindex("eth0");
+	VrrpService service(interface, AF_INET, "192.168.1.3", 1);
+	service.addIpAddress("192.168.2.220");
+	service.startup();
 
 	return MainLoop::run() ? 0 : -1;
 }

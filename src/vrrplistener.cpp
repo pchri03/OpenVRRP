@@ -154,14 +154,16 @@ void VrrpListener::close ()
 
 void VrrpListener::registerService (VrrpService *service)
 {
-	m_services[service->virtualRouterId()] = service;
+	//m_services[service->virtualRouterId()] = service;
 }
 
 void VrrpListener::unregisterService (VrrpService *service)
 {
+	/*
 	ServiceMap::iterator it = m_services.find(service->virtualRouterId());
 	if (it != m_services.end() && it->second == service)
 		m_services.erase(it);
+	*/
 }
 
 int VrrpListener::error () const
@@ -294,7 +296,7 @@ bool VrrpListener::onIncomingPacket ()
 	ServiceMap::iterator service = m_services.find(virtualRouterId);
 	if (service != m_services.end())
 	{
-		service->second->onIncomingPacket(m_buffer, size);
+	//ervice->second->onIncomingPacket(m_buffer, size);
 		return true;
 	}
 

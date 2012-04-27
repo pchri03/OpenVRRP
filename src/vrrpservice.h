@@ -19,18 +19,148 @@
 #ifndef INCLUDE_OPENVRRP_VRRPSERVICE_H
 #define INCLUDE_OPENVRRP_VRRPSERVICE_H
 
+#include "ipaddress.h"
+#include "timer.h"
+#include "vrrpeventlistener.h"
+
 #include <cstdint>
 
-class VrrpService
+class VrrpSocket;
+
+class VrrpService : private VrrpEventListener
 {
 	public:
-		VrrpService (int interface, std::uint8_t virtualRouterId, int family);
+		enum State
+		{
+			Initialize,
+			Backup,
+			Master
+		};
 
-		std::uint8_t virtualRouterId () const;
-		void onIncomingPacket (const std::uint8_t *packet, unsigned int size);
+		VrrpService (int interface, int family, const IpAddress &primaryIpAddress, std::uint_fast8_t virtualRouterId, std::uint_fast8_t priority = 100);
+		~VrrpService ();
+
+		inline std::uint_fast8_t virtualRouterId () const
+		{
+			return m_virtualRouterId;
+		}
+
+		inline std::uint_fast8_t priority () const
+		{
+			return m_priority;
+		}
+
+		inline void setPriority (std::uint_fast8_t priority)
+		{
+			m_priority = priority;
+		}
+
+		inline unsigned int advertisementInterval () const
+		{
+			return m_advertisementInterval;
+		}
+
+		inline void setAdvertisementInterval (unsigned int advertisementInterval)
+		{
+			m_advertisementInterval = advertisementInterval;
+		}
+
+		inline unsigned int masterAdvertisementInterval () const
+		{
+			return m_masterAdvertisementInterval;
+		}
+
+		inline unsigned int skewTime () const
+		{
+			return ((256 * priority()) * m_masterAdvertisementInterval) / 256;
+		}
+		
+		inline unsigned int masterDownInterval () const
+		{
+			return 3 * m_masterAdvertisementInterval + skewTime();
+		}
+		
+		inline bool preemptMode () const
+		{
+			return m_preemptMode;
+		}
+
+		inline void setPreemptMode (bool enabled)
+		{
+			m_preemptMode = enabled;
+		}
+
+		inline bool acceptMode () const
+		{
+			return m_acceptMode;
+		}
+
+		inline void setAcceptMode (bool enabled)
+		{
+			m_acceptMode = enabled;
+		}
+
+		bool addIpAddress (const IpAddress &address);
+		bool removeIpAddress (const IpAddress &address);
+		const IpAddressList &addresses () const;
+
+		inline State state () const
+		{
+			return m_state;
+		}
+
+		void startup ();
+		void shutdown ();
 
 	private:
-		std::uint8_t m_virtualRouterId;
+		virtual void onIncomingVrrpPacket (
+				unsigned int interface,
+				const IpAddress &address,
+				std::uint_fast8_t virtualRouterId,
+				std::uint_fast8_t priority,
+				std::uint_fast16_t maxAdvertisementInterval,
+				const IpAddressList &addresses);
+
+		void onMasterDownTimer ();
+		void onAdvertisementTimer ();
+
+		void sendAdvertisement (std::uint_least8_t priority);
+		void sendARPs();
+		void sendNeighborAdvertisements();
+		void joinSolicitedNodeMulticast();
+		void setVirtualMac();
+		void setDefaultMac();
+		void setState (State state);
+		void addIpAddresses ();
+		void removeIpAddresses ();
+
+		static void timerCallback (Timer *timer, void *userData);
+
+	private:
+		std::uint_fast8_t m_virtualRouterId;
+		std::uint_fast8_t m_priority;
+		IpAddress m_primaryIpAddress;
+		unsigned int m_advertisementInterval;
+		unsigned int m_masterAdvertisementInterval;
+		bool m_preemptMode;
+		bool m_acceptMode;
+
+		Timer m_masterDownTimer;
+		Timer m_advertisementTimer;
+
+		State m_state;
+
+		int m_family;
+		int m_interface;
+		int m_outputInterface;
+
+		std::uint8_t m_mac[6];
+
+		IpAddressList m_addresses;
+
+		VrrpSocket *m_socket;
+
+		const char *m_name;
 };
 
 #endif // INCLUDE_OPENVRRP_VRRPSERVICE_H
