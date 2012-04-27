@@ -37,6 +37,7 @@ class IpAddress
 		}
 
 		bool operator < (const IpAddress &other) const;
+		bool operator > (const IpAddress &other) const;
 		bool operator == (const IpAddress &other) const;
 		bool operator != (const IpAddress &other) const
 		{

@@ -66,6 +66,16 @@ bool IpAddress::operator < (const IpAddress &other) const
 		return std::memcmp(data(), other.data(), size()) < 0;
 }
 
+bool IpAddress::operator > (const IpAddress &other) const
+{
+	if (family() > other.family())
+		return true;
+	else if (family() < other.family())
+		return false;
+	else // if (family() == other.family())
+		return std::memcmp(data(), other.data(), size()) > 0;
+}
+
 bool IpAddress::operator == (const IpAddress &other) const
 {
 	return family() == other.family() && std::memcmp(data(), other.data(), size());
