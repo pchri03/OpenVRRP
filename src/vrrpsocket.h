@@ -45,6 +45,7 @@ class VrrpSocket
 		}
 
 		static VrrpSocket *instance (int family);
+		static void cleanup ();
 
 	private:
 		explicit VrrpSocket (int family);
@@ -58,8 +59,6 @@ class VrrpSocket
 		void decodeControlMessage (const msghdr &hdr, int &interface, IpAddress &address);
 
 		static void socketCallback (int fd, void *userData);
-
-		static void cleanup ();
 
 	private:
 		typedef std::map<unsigned int, std::map<std::uint_fast8_t, VrrpEventListener *> > EventListenerMap;
@@ -75,7 +74,6 @@ class VrrpSocket
 	private:
 		static VrrpSocket *m_ipv4Instance;
 		static VrrpSocket *m_ipv6Instance;
-		static bool m_initialized;
 };
 
 #endif // INCLUDE_OPENVRRP_VRRPSOCKET_H

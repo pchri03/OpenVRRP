@@ -39,7 +39,9 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_state(Initialize),
 	m_family(family),
 	m_interface(interface),
-	m_socket(VrrpSocket::instance(m_family))
+	m_outputInterface(interface),
+	m_socket(VrrpSocket::instance(m_family)),
+	m_error(0)
 {
 	if (m_family == AF_INET)
 		m_name = "VRRP IPv4 Service";
@@ -53,7 +55,7 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_mac[4] = (family == AF_INET ? 1 : 2);
 	m_mac[5] = virtualRouterId;
 
-	if (m_socket != 0)
+	if (m_socket != nullptr)
 	{
 		m_outputInterface = Netlink::addMacvlanInterface(m_interface, m_mac);
 		if (m_outputInterface < 0)
@@ -61,6 +63,8 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 
 		m_socket->addEventListener(m_interface, m_virtualRouterId, this);
 	}
+	else
+		m_error = 1;
 }
 
 VrrpService::~VrrpService ()
@@ -70,7 +74,7 @@ VrrpService::~VrrpService ()
 	if (m_outputInterface != m_interface)
 		Netlink::removeInterface(m_outputInterface);
 
-	if (m_socket != 0)
+	if (m_socket != nullptr)
 		m_socket->removeEventListener(m_interface, m_virtualRouterId);
 }
 

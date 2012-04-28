@@ -19,21 +19,43 @@
 #include "mainloop.h"
 #include "vrrpservice.h"
 #include "vrrpmanager.h"
+#include "vrrpsocket.h"
 #include "ipaddress.h"
 
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <syslog.h>
 #include <iostream>
+#include <cstdlib>
+
+static void cleanup ()
+{
+	VrrpManager::cleanup();
+	VrrpSocket::cleanup();
+}
 
 int main ()
 {
 	openlog("openvrrp", LOG_PERROR, LOG_DAEMON);
 
+	std::atexit(cleanup);
+
 	int interface = if_nametoindex("eth0");
-	VrrpService *service = VrrpManager::getService(interface, 1, AF_INET, true);
-	service->addIpAddress("192.168.2.220");
-	service->startup();
+	VrrpService *service;
+
+	service = VrrpManager::getService(interface, 1, AF_INET, true);
+	if (service != nullptr)
+	{
+		service->addIpAddress("192.168.2.220");
+		service->startup();
+	}
+
+	service = VrrpManager::getService(interface, 1, AF_INET6, true);
+	if (service != nullptr)
+	{
+		service->addIpAddress("FEF0::3");
+		service->startup();
+	}
 
 	return MainLoop::run() ? 0 : -1;
 }

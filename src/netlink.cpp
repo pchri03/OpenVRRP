@@ -55,7 +55,7 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family,
 		return -1;
 	}
 
-	uint8_t buffer[1024];
+	uint8_t buffer[4096];
 	int ret = 0;
 	const nlmsghdr *hdr = reinterpret_cast<const nlmsghdr *>(buffer);
 	do
@@ -67,6 +67,8 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family,
 			return -1;
 		}
 
+		hdr = reinterpret_cast<const nlmsghdr *>(buffer);
+
 		const std::uint8_t *ptr = buffer;
 		while (size >= NLA_ALIGN(hdr->nlmsg_len) && hdr->nlmsg_len >= 16)
 		{
@@ -75,7 +77,6 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family,
 				if (hdr->nlmsg_len >= 32)
 				{
 					const nlmsgerr *err = reinterpret_cast<const nlmsgerr *>(ptr + 16);
-					syslog(LOG_WARNING, "Netlink: Got error %i (%s)\n", err->error, strerror(0 - err->error));
 					ret = err->error;
 				}
 			}
@@ -99,10 +100,22 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family,
 						while (left >= 4)
 						{
 							const nlattr *attr = reinterpret_cast<const nlattr *>(attrptr);
-							if (address != 0 && attr->nla_type == IFA_LOCAL)
+							if (address != 0 && (attr->nla_type == IFA_LOCAL || attr->nla_type == IFA_ADDRESS))
 							{
-								*address = IpAddress(attrptr + 4, family);
-								break;
+								IpAddress addr(attrptr + 4, family);
+								if (family == AF_INET6)
+								{
+									if (!IN6_IS_ADDR_LINKLOCAL(addr.data()))
+									{
+										*address = addr;
+										break;
+									}
+								}
+								else // if (family == AF_INET)
+								{
+									*address = IpAddress(attrptr + 4, family);
+									break;
+								}
 							}
 	
 							left -= NLA_ALIGN(attr->nla_len);
@@ -141,10 +154,15 @@ IpAddress Netlink::getPrimaryIpAddress (int interface, int family)
 	msg->ifa_index = interface;
 
 	IpAddress address;
-	if (sendNetlinkPacket(buffer, sizeof(buffer), family, &address, &interface) >= 0)
+	int err;
+	err = sendNetlinkPacket(buffer, sizeof(buffer), family, &address, &interface);
+	if (err >= 0)
 		return address;
 	else
+	{
+		syslog(LOG_WARNING, "Netlink: Error getting primary address: %s", std::strerror(0 - err));
 		return IpAddress();
+	}
 }
 
 bool Netlink::modifyIpAddress (int interface, const IpAddress &ip, bool add)
@@ -170,7 +188,14 @@ bool Netlink::modifyIpAddress (int interface, const IpAddress &ip, bool add)
 
 	attr.toPacket(buffer.data() + 16 + 8);
 
-	return sendNetlinkPacket(buffer.data(), buffer.size()) >= 0;
+	int err = sendNetlinkPacket(buffer.data(), buffer.size());
+	if (err >= 0)
+		return true;
+	else
+	{
+		syslog(LOG_WARNING, "Netlink: Error modifying IP address: %s", std::strerror(0 - err));
+		return false;
+	}
 }
 
 int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress)
@@ -224,11 +249,15 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress)
 
 	attr.toPacket(buffer.data() + 32);
 
-	int newInterface;
-	if (sendNetlinkPacket(buffer.data(), buffer.size(), AF_UNSPEC, nullptr, &newInterface) == 0)
+	int newInterface = 0;
+	int err = sendNetlinkPacket(buffer.data(), buffer.size(), AF_UNSPEC, nullptr, &newInterface);
+	if (err >= 0)
 		return newInterface;
 	else
+	{
+		syslog(LOG_WARNING, "Netlink: Error creating macvlan interface: %s", std::strerror(0 - err));
 		return -1;
+	}
 }
 
 bool Netlink::removeInterface (int interface)

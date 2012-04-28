@@ -138,6 +138,11 @@ class VrrpService : private VrrpEventListener
 		void startup ();
 		void shutdown ();
 
+		inline int error () const
+		{
+			return m_error;
+		}
+
 	private:
 		virtual void onIncomingVrrpPacket (
 				unsigned int interface,
@@ -187,6 +192,7 @@ class VrrpService : private VrrpEventListener
 		VrrpSocket *m_socket;
 
 		const char *m_name;
+		int m_error;
 };
 
 #endif // INCLUDE_OPENVRRP_VRRPSERVICE_H

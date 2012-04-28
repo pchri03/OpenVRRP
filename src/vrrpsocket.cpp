@@ -35,7 +35,6 @@
 
 VrrpSocket *VrrpSocket::m_ipv4Instance = 0;
 VrrpSocket *VrrpSocket::m_ipv6Instance = 0;
-bool VrrpSocket::m_initialized = false;
 
 VrrpSocket::VrrpSocket (int family) :
 	m_family(family),
@@ -79,7 +78,7 @@ bool VrrpSocket::createSocket ()
 		int val = 0;
 
 		val = 0;
-		if (setsockopt(m_socket, IPPROTO_IP, IP_MULTICAST_LOOP, &val, sizeof(val)) == -1)
+		if (setsockopt(m_socket, SOL_IP, IP_MULTICAST_LOOP, &val, sizeof(val)) == -1)
 		{
 			m_error = errno;
 			syslog(LOG_ERR, "%s: Error disabling multicast loopback: %s", m_name, std::strerror(m_error));
@@ -87,7 +86,7 @@ bool VrrpSocket::createSocket ()
 		}
 
 		val = 255;
-		if (setsockopt(m_socket, IPPROTO_IP, IP_MULTICAST_TTL, &val, sizeof(val)) == -1)
+		if (setsockopt(m_socket, SOL_IP, IP_MULTICAST_TTL, &val, sizeof(val)) == -1)
 		{
 			m_error = errno;
 			syslog(LOG_ERR, "%s: Error setting multicast TTL: %s", m_name, std::strerror(m_error));
@@ -98,7 +97,7 @@ bool VrrpSocket::createSocket ()
 		req.imr_multiaddr.s_addr = *reinterpret_cast<const std::uint32_t *>(m_multicastAddress.data());
 		req.imr_address.s_addr = INADDR_ANY;
 		req.imr_ifindex = 0;
-		if (setsockopt(m_socket, IPPROTO_IP, IP_ADD_MEMBERSHIP, &req, sizeof(req)) == -1)
+		if (setsockopt(m_socket, SOL_IP, IP_ADD_MEMBERSHIP, &req, sizeof(req)) == -1)
 		{
 			m_error = errno;
 			syslog(LOG_ERR, "%s: Error joining multicast address: %s", m_name, std::strerror(m_error));
@@ -106,7 +105,7 @@ bool VrrpSocket::createSocket ()
 		}
 
 		val = 1;
-		if (setsockopt(m_socket, IPPROTO_IP, IP_PKTINFO, &val, sizeof(val)) == -1)
+		if (setsockopt(m_socket, SOL_IP, IP_PKTINFO, &val, sizeof(val)) == -1)
 		{
 			m_error = errno;
 			syslog(LOG_ERR, "%s: Error enabling reception of packet info: %s", m_name, std::strerror(m_error));
@@ -115,16 +114,18 @@ bool VrrpSocket::createSocket ()
 	}
 	else // if (m_family == AF_INET6)
 	{
-		int val = 1;
-		if (setsockopt(m_socket, IPPROTO_IPV6, IPV6_V6ONLY, &val, sizeof(val)) == -1)
+		int val;
+
+		val = 1;
+		if (setsockopt(m_socket, SOL_IPV6, IPV6_RECVPKTINFO, &val, sizeof(val)) == -1)
 		{
 			m_error = errno;
-			syslog(LOG_ERR, "%s: Error disabling IPv4: %s", m_name, std::strerror(m_error));
+			syslog(LOG_ERR, "%s: Error enabling reception of packet info: %s", m_name, std::strerror(m_error));
 			return false;
 		}
 
 		val = 0;
-		if (setsockopt(m_socket, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &val, sizeof(val)) == -1)
+		if (setsockopt(m_socket, SOL_IPV6, IPV6_MULTICAST_LOOP, &val, sizeof(val)) == -1)
 		{
 			m_error = errno;
 			syslog(LOG_ERR, "%s: Error disabling multicast loopback: %s", m_name, std::strerror(m_error));
@@ -132,7 +133,7 @@ bool VrrpSocket::createSocket ()
 		}
 
 		val = 255;
-		if (setsockopt(m_socket, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &val, sizeof(val)) == -1)
+		if (setsockopt(m_socket, SOL_IPV6, IPV6_MULTICAST_HOPS, &val, sizeof(val)) == -1)
 		{
 			m_error = errno;
 			syslog(LOG_ERR, "%s: Error setting multicast hop limit: %s", m_name, std::strerror(m_error));
@@ -142,18 +143,10 @@ bool VrrpSocket::createSocket ()
 		ipv6_mreq req;
 		std::memcpy(&req.ipv6mr_multiaddr, m_multicastAddress.data(), 16);
 		req.ipv6mr_interface = 0;
-		if (setsockopt(m_socket, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, &req, sizeof(req)) == -1)
+		if (setsockopt(m_socket, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &req, sizeof(req)) == -1)
 		{
 			m_error = errno;
 			syslog(LOG_ERR, "%s: Error joining multicast address: %s", m_name, std::strerror(m_error));
-			return false;
-		}
-
-		val = 1;
-		if (setsockopt(m_socket, IPPROTO_IPV6, IPV6_PKTINFO, &val, sizeof(val)) == -1)
-		{
-			m_error = errno;
-			syslog(LOG_ERR, "%s: Error enabling reception of packet info: %s", m_name, std::strerror(m_error));
 			return false;
 		}
 	}
@@ -199,13 +192,8 @@ VrrpSocket *VrrpSocket::instance (int family)
 	else
 		return 0;
 
-	if (*ptr == 0)
+	if (*ptr == nullptr)
 	{
-		if (!m_initialized)
-		{
-			std::atexit(cleanup);
-			m_initialized = true;
-		}
 		VrrpSocket *socket = new VrrpSocket(family);
 		if (socket->error() != 0)
 			delete socket;
@@ -383,13 +371,13 @@ void VrrpSocket::decodeControlMessage (const msghdr &hdr, int &interface, IpAddr
 			break;
 		}
 
-		if (m_family == AF_INET && hdr->cmsg_level == IPPROTO_IP && hdr->cmsg_type == IP_PKTINFO && hdr->cmsg_len >= sizeof(cmsghdr) + sizeof(in_pktinfo))
+		if (m_family == AF_INET && hdr->cmsg_level == SOL_IP && hdr->cmsg_type == IP_PKTINFO && hdr->cmsg_len >= sizeof(cmsghdr) + sizeof(in_pktinfo))
 		{
 			const in_pktinfo *pktinfo = reinterpret_cast<const in_pktinfo *>(ptr + sizeof(cmsghdr));
 			interface = pktinfo->ipi_ifindex;
 			address = IpAddress(&pktinfo->ipi_addr, AF_INET);
 		}
-		else if (m_family == AF_INET6 && hdr->cmsg_level == IPPROTO_IPV6 && hdr->cmsg_type == IPV6_PKTINFO && hdr->cmsg_len >= sizeof(cmsghdr) + sizeof(in_pktinfo))
+		else if (m_family == AF_INET6 && hdr->cmsg_level == SOL_IPV6 && hdr->cmsg_type == IPV6_PKTINFO && hdr->cmsg_len >= sizeof(cmsghdr) + sizeof(in_pktinfo))
 		{
 			const in6_pktinfo *pktinfo = reinterpret_cast<const in6_pktinfo *>(ptr + sizeof(cmsghdr));
 			interface = pktinfo->ipi6_ifindex;
@@ -442,7 +430,7 @@ bool VrrpSocket::sendPacket (
 	{
 		cmsghdr *cmsg = reinterpret_cast<cmsghdr *>(m_controlBuffer);
 		cmsg->cmsg_len = sizeof(cmsghdr) + sizeof(in_pktinfo);
-		cmsg->cmsg_level = IPPROTO_IP;
+		cmsg->cmsg_level = SOL_IP;
 		cmsg->cmsg_type = IP_PKTINFO;
 		
 		in_pktinfo *pktinfo = reinterpret_cast<in_pktinfo *>(m_controlBuffer + sizeof(cmsghdr));
@@ -456,7 +444,7 @@ bool VrrpSocket::sendPacket (
 	{
 		cmsghdr *cmsg = reinterpret_cast<cmsghdr *>(m_controlBuffer);
 		cmsg->cmsg_len = sizeof(cmsghdr) + sizeof(in6_pktinfo);
-		cmsg->cmsg_level = IPPROTO_IPV6;
+		cmsg->cmsg_level = SOL_IPV6;
 		cmsg->cmsg_type = IPV6_PKTINFO;
 
 		in6_pktinfo *pktinfo = reinterpret_cast<in6_pktinfo *>(m_controlBuffer + sizeof(cmsghdr));
