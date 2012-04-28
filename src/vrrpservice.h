@@ -37,12 +37,38 @@ class VrrpService : private VrrpEventListener
 			Master
 		};
 
-		VrrpService (int interface, int family, const IpAddress &primaryIpAddress, std::uint_fast8_t virtualRouterId, std::uint_fast8_t priority = 100);
+		VrrpService (int interface, int family, std::uint_fast8_t virtualRouterId);
 		~VrrpService ();
+
+		inline int interface () const
+		{
+			return m_interface;
+		}
+
+		inline int family () const
+		{
+			return m_family;
+		}
 
 		inline std::uint_fast8_t virtualRouterId () const
 		{
 			return m_virtualRouterId;
+		}
+
+		inline IpAddress primaryIpAddress () const
+		{
+			return m_primaryIpAddress;
+		}
+
+		inline bool setPrimaryIpAddress (const IpAddress &address)
+		{
+			if (m_state == Initialize && address.family() == m_family)
+			{
+				m_primaryIpAddress = address;
+				return true;
+			}
+			else
+				return false;
 		}
 
 		inline std::uint_fast8_t priority () const

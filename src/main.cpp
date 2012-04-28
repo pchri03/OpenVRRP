@@ -18,20 +18,22 @@
 
 #include "mainloop.h"
 #include "vrrpservice.h"
+#include "vrrpmanager.h"
 #include "ipaddress.h"
 
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <syslog.h>
+#include <iostream>
 
 int main ()
 {
 	openlog("openvrrp", LOG_PERROR, LOG_DAEMON);
 
 	int interface = if_nametoindex("eth0");
-	VrrpService service(interface, AF_INET, "192.168.1.3", 1);
-	service.addIpAddress("192.168.2.220");
-	service.startup();
+	VrrpService *service = VrrpManager::getService(interface, 1, AF_INET, true);
+	service->addIpAddress("192.168.2.220");
+	service->startup();
 
 	return MainLoop::run() ? 0 : -1;
 }

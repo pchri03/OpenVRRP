@@ -26,10 +26,10 @@
 #include <linux/sockios.h>
 #include <sys/ioctl.h>
 
-VrrpService::VrrpService (int interface, int family, const IpAddress &primaryIpAddress, std::uint_fast8_t virtualRouterId, std::uint_fast8_t priority) :
+VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRouterId) :
 	m_virtualRouterId(virtualRouterId),
-	m_priority(priority),
-	m_primaryIpAddress(primaryIpAddress),
+	m_priority(100),
+	m_primaryIpAddress(Netlink::getPrimaryIpAddress(interface, family)),
 	m_advertisementInterval(100),
 	m_masterAdvertisementInterval(m_advertisementInterval),
 	m_preemptMode(true),

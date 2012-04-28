@@ -29,10 +29,8 @@
 #include <linux/sockios.h>
 #include <sys/ioctl.h>
 
-int Netlink::sendNetlinkPacket (const void *data, unsigned int size)
+int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family, IpAddress *address, int *interface)
 {
-	std::printf("sendNetlinkPacket(%p, %u)\n", data, size);
-
 	int s = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
 	if (s == -1)
 	{
@@ -58,8 +56,8 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size)
 	}
 
 	uint8_t buffer[1024];
-	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer);
 	int ret = 0;
+	const nlmsghdr *hdr = reinterpret_cast<const nlmsghdr *>(buffer);
 	do
 	{
 		unsigned int size = read(s, buffer, sizeof(buffer));
@@ -69,24 +67,84 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size)
 			return -1;
 		}
 
-		std::printf("Received %i bytes\n", size);
+		const std::uint8_t *ptr = buffer;
+		while (size >= NLA_ALIGN(hdr->nlmsg_len) && hdr->nlmsg_len >= 16)
+		{
+			if (hdr->nlmsg_type == NLMSG_ERROR)
+			{
+				if (hdr->nlmsg_len >= 32)
+				{
+					const nlmsgerr *err = reinterpret_cast<const nlmsgerr *>(ptr + 16);
+					syslog(LOG_WARNING, "Netlink: Got error %i (%s)\n", err->error, strerror(0 - err->error));
+					ret = err->error;
+				}
+			}
+			else if (hdr->nlmsg_type == RTM_NEWLINK || hdr->nlmsg_type == RTM_GETLINK || hdr->nlmsg_type == RTM_SETLINK)
+			{
+				if (interface != 0 && hdr->nlmsg_len >= 32)
+				{
+					const ifinfomsg *msg = reinterpret_cast<const ifinfomsg *>(ptr + 16);
+					*interface = msg->ifi_index;
+				}
+			}
+			else if (hdr->nlmsg_type == RTM_NEWADDR || hdr->nlmsg_type == RTM_GETADDR || hdr->nlmsg_type == RTM_DELADDR)
+			{
+				if (interface != 0 && address != 0 && hdr->nlmsg_len >= 24)
+				{
+					const ifaddrmsg *msg = reinterpret_cast<const ifaddrmsg *>(ptr + 16);
+					if (*interface == msg->ifa_index)
+					{
+						unsigned int left = hdr->nlmsg_len - 24;
+						const std::uint8_t *attrptr = ptr + 24;
+						while (left >= 4)
+						{
+							const nlattr *attr = reinterpret_cast<const nlattr *>(attrptr);
+							if (address != 0 && attr->nla_type == IFA_LOCAL)
+							{
+								*address = IpAddress(attrptr + 4, family);
+								break;
+							}
+	
+							left -= NLA_ALIGN(attr->nla_len);
+							attrptr += NLA_ALIGN(attr->nla_len);
+						}
+					}
+				}
+			}
 
-		if (hdr->nlmsg_type == NLMSG_ERROR)
-		{
-			const nlmsgerr *err = reinterpret_cast<const nlmsgerr *>(buffer + 16);
-			std::printf("Got error %i (%s)\n", err->error, strerror(0 - err->error));
-			ret = err->error;
-		}
-		else if (hdr->nlmsg_type == RTM_NEWLINK)
-		{
-			const ifinfomsg *msg = reinterpret_cast<const ifinfomsg *>(buffer + 16);
-			ret = msg->ifi_index;
+			ptr += NLA_ALIGN(hdr->nlmsg_len);
+			size -= NLA_ALIGN(hdr->nlmsg_len);
 		}
 	} while (hdr->nlmsg_flags & NLM_F_MULTI && hdr->nlmsg_type != NLMSG_DONE);
 
 	close(s);
 
 	return ret;
+}
+
+IpAddress Netlink::getPrimaryIpAddress (int interface, int family)
+{
+	std::uint8_t buffer[sizeof(nlmsghdr) + sizeof(ifaddrmsg)];
+
+	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer);
+	hdr->nlmsg_len = sizeof(buffer);
+	hdr->nlmsg_type = RTM_GETADDR;
+	hdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_MATCH;
+	hdr->nlmsg_seq = 1;
+	hdr->nlmsg_pid = getpid();
+
+	ifaddrmsg *msg = reinterpret_cast<ifaddrmsg *>(buffer + 16);
+	msg->ifa_family = family;
+	msg->ifa_prefixlen = 0;
+	msg->ifa_flags = 0;
+	msg->ifa_scope = 0;
+	msg->ifa_index = interface;
+
+	IpAddress address;
+	if (sendNetlinkPacket(buffer, sizeof(buffer), family, &address, &interface) >= 0)
+		return address;
+	else
+		return IpAddress();
 }
 
 bool Netlink::modifyIpAddress (int interface, const IpAddress &ip, bool add)
@@ -166,7 +224,11 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress)
 
 	attr.toPacket(buffer.data() + 32);
 
-	return sendNetlinkPacket(buffer.data(), buffer.size());
+	int newInterface;
+	if (sendNetlinkPacket(buffer.data(), buffer.size(), AF_UNSPEC, nullptr, &newInterface) == 0)
+		return newInterface;
+	else
+		return -1;
 }
 
 bool Netlink::removeInterface (int interface)
@@ -190,7 +252,7 @@ bool Netlink::removeInterface (int interface)
 
 	syslog(LOG_DEBUG, "Removing interface %i", interface);
 
-	return sendNetlinkPacket(buffer, sizeof(buffer));
+	return sendNetlinkPacket(buffer, sizeof(buffer)) >= 0;
 }
 
 Netlink::Attribute::Attribute (std::uint16_t type, const void *data, unsigned int size) :
@@ -330,7 +392,7 @@ bool Netlink::toggleInterface (int interface, bool up)
 	int s = socket(PF_INET, SOCK_DGRAM, 0);
 	if (ioctl(s, SIOCGIFFLAGS, &ifr) < 0)
 	{
-		syslog(LOG_ERR, "Error getting interface flags: %m");
+		syslog(LOG_ERR, "Netlink: Error getting interface flags: %s", std::strerror(errno));
 		close(s);
 		return false;
 	}
@@ -345,7 +407,7 @@ bool Netlink::toggleInterface (int interface, bool up)
 		ifr.ifr_ifru.ifru_flags = newFlags;
 		if (ioctl(s, SIOCSIFFLAGS, &ifr) < 0)
 		{
-			syslog(LOG_ERR, "Error setting interface flags: %m");
+			syslog(LOG_ERR, "Netlink: Error setting interface flags: %s", std::strerror(errno));
 			close(s);
 			return false;
 		}

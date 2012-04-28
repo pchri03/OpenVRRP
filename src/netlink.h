@@ -32,6 +32,8 @@ class Netlink
 		static bool removeInterface (int interface);
 		static bool setMac (int interface, const std::uint8_t *macAddress);
 
+		static IpAddress getPrimaryIpAddress (int interface, int family);
+
 		static bool addIpAddress (int interface, const IpAddress &ip)
 		{
 			return modifyIpAddress(interface, ip, true);
@@ -45,7 +47,7 @@ class Netlink
 
 	private:
 		static bool modifyIpAddress (int interface, const IpAddress &ip, bool add);
-		static int sendNetlinkPacket (const void *packet, unsigned int size);
+		static int sendNetlinkPacket (const void *packet, unsigned int size, int family = AF_UNSPEC, IpAddress *address = 0, int *interface = 0);
 
 		class Attribute
 		{

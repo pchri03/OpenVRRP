@@ -51,7 +51,7 @@ bool MainLoop::addMonitor (int fd, Callback *callback, void *userData)
 
 	if (epoll_ctl(m_fd, EPOLL_CTL_ADD, fd, &event) == -1)
 	{
-		syslog(LOG_ERR, "Error adding file to main loop monitor: %m");
+		syslog(LOG_ERR, "MainLoop: Error adding file to main loop monitor: %m");
 		delete monitor;
 		return false;
 	}
@@ -78,7 +78,7 @@ bool MainLoop::removeMonitor (int fd)
 	event.events = EPOLLIN;
 	event.data.ptr = it->second;
 	if (epoll_ctl(m_fd, EPOLL_CTL_DEL, fd, &event) == -1)
-		syslog(LOG_ERR, "Error removing file from main loop monitor: %m");
+		syslog(LOG_ERR, "MainLoop: Error removing file from main loop monitor: %m");
 
 	delete it->second;
 	m_monitors.erase(it);
@@ -89,7 +89,10 @@ bool MainLoop::removeMonitor (int fd)
 bool MainLoop::run ()
 {
 	m_aborted = false;
-	sighandler_t oldSignalHandler = signal(SIGINT, signalCallback);
+	signal(SIGINT, signalCallback);
+	signal(SIGTERM, signalCallback);
+	signal(SIGQUIT, signalCallback);
+	signal(SIGHUP, signalCallback);
 	while (m_monitors.size() > 0 && !m_aborted)
 	{
 		struct epoll_event events[16];
@@ -99,9 +102,11 @@ bool MainLoop::run ()
 		{
 			if (errno != EINTR)
 			{
-				syslog(LOG_ERR, "epoll_wait failed: %m");
+				syslog(LOG_ERR, "MainLoop: epoll_wait failed: %m");
 				return false;
 			}
+			else
+				syslog(LOG_DEBUG, "MainLoop: epoll_wait was interrupted");
 		}
 		else
 		{
@@ -120,5 +125,5 @@ void MainLoop::signalCallback (int signum)
 {
 	syslog(LOG_DEBUG, "Caught signal");
 	m_aborted = true;
-	signal(signum, signalCallback);
+	signal(signum, SIG_IGN);
 }
