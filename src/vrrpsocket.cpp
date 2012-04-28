@@ -29,6 +29,8 @@
 #include <syslog.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <sys/socket.h>
 
 VrrpSocket *VrrpSocket::m_ipv4Instance = 0;
@@ -74,6 +76,24 @@ bool VrrpSocket::createSocket ()
 
 	if (m_family == AF_INET)
 	{
+		int val = 0;
+
+		val = 0;
+		if (setsockopt(m_socket, IPPROTO_IP, IP_MULTICAST_LOOP, &val, sizeof(val)) == -1)
+		{
+			m_error = errno;
+			syslog(LOG_ERR, "%s: Error disabling multicast loopback: %s", m_name, std::strerror(m_error));
+			return false;
+		}
+
+		val = 255;
+		if (setsockopt(m_socket, IPPROTO_IP, IP_MULTICAST_TTL, &val, sizeof(val)) == -1)
+		{
+			m_error = errno;
+			syslog(LOG_ERR, "%s: Error setting multicast TTL: %s", m_name, std::strerror(m_error));
+			return false;
+		}
+
 		ip_mreqn req;
 		req.imr_multiaddr.s_addr = *reinterpret_cast<const std::uint32_t *>(m_multicastAddress.data());
 		req.imr_address.s_addr = INADDR_ANY;
@@ -85,29 +105,13 @@ bool VrrpSocket::createSocket ()
 			return false;
 		}
 
-		int val = 1;
+		val = 1;
 		if (setsockopt(m_socket, IPPROTO_IP, IP_PKTINFO, &val, sizeof(val)) == -1)
 		{
 			m_error = errno;
 			syslog(LOG_ERR, "%s: Error enabling reception of packet info: %s", m_name, std::strerror(m_error));
 			return false;
 		}
-
-		if (setsockopt(m_socket, IPPROTO_IP, IP_RECVTTL, &val, sizeof(val)) == -1)
-		{
-			m_error = errno;
-			syslog(LOG_ERR, "%s: Error enabling reception of TTL: %s", m_name, std::strerror(m_error));
-			return false;
-		}
-
-		val = 255;
-		if (setsockopt(m_socket, IPPROTO_IP, IP_MULTICAST_TTL, &val, sizeof(val)) == -1)
-		{
-			m_error = errno;
-			syslog(LOG_ERR, "%s: Error setting TTL: %s", m_name, std::strerror(m_error));
-			return false;
-		}
-
 	}
 	else // if (m_family == AF_INET6)
 	{
@@ -118,7 +122,23 @@ bool VrrpSocket::createSocket ()
 			syslog(LOG_ERR, "%s: Error disabling IPv4: %s", m_name, std::strerror(m_error));
 			return false;
 		}
-			
+
+		val = 0;
+		if (setsockopt(m_socket, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &val, sizeof(val)) == -1)
+		{
+			m_error = errno;
+			syslog(LOG_ERR, "%s: Error disabling multicast loopback: %s", m_name, std::strerror(m_error));
+			return false;
+		}
+
+		val = 255;
+		if (setsockopt(m_socket, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &val, sizeof(val)) == -1)
+		{
+			m_error = errno;
+			syslog(LOG_ERR, "%s: Error setting multicast hop limit: %s", m_name, std::strerror(m_error));
+			return false;
+		}
+
 		ipv6_mreq req;
 		std::memcpy(&req.ipv6mr_multiaddr, m_multicastAddress.data(), 16);
 		req.ipv6mr_interface = 0;
@@ -129,25 +149,11 @@ bool VrrpSocket::createSocket ()
 			return false;
 		}
 
+		val = 1;
 		if (setsockopt(m_socket, IPPROTO_IPV6, IPV6_PKTINFO, &val, sizeof(val)) == -1)
 		{
 			m_error = errno;
 			syslog(LOG_ERR, "%s: Error enabling reception of packet info: %s", m_name, std::strerror(m_error));
-			return false;
-		}
-
-		if (setsockopt(m_socket, IPPROTO_IPV6, IPV6_HOPLIMIT, &val, sizeof(val)) == -1)
-		{
-			m_error = errno;
-			syslog(LOG_ERR, "%s: Error enabling reception of hop limit: %s", m_name, std::strerror(m_error));
-			return false;
-		}
-
-		val = 255;
-		if (setsockopt(m_socket, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &val, sizeof(val)) == -1)
-		{
-			m_error = errno;
-			syslog(LOG_ERR, "%s: Error setting hop limit: %s", m_name, std::strerror(m_error));
 			return false;
 		}
 	}
@@ -259,14 +265,40 @@ bool VrrpSocket::onSocketPacket ()
 	// Parse through control message, receiving TTL/HOPLIMIT, destination address and source interface
 	int interface = 0;
 	IpAddress dstAddress;
-	std::uint8_t ttl = 255;
-
-	decodeControlMessage(hdr, interface, dstAddress, ttl);
+	decodeControlMessage(hdr, interface, dstAddress);
 
 	// Find event listener list for interface
 	EventListenerMap::const_iterator interfaceListenerMap = m_listeners.find(interface);
 	if (interfaceListenerMap == m_listeners.end())
 		return false;
+
+	const std::uint8_t *packet;
+	std::uint8_t ttl;
+	if (m_family == AF_INET)
+	{
+		const iphdr *ip = reinterpret_cast<const iphdr *>(m_buffer);
+		packet = m_buffer + ip->ihl * 4;
+		size = ntohs(ip->tot_len) - ip->ihl * 4;
+		ttl = ip->ttl;
+	}
+	else // if (m_family == AF_INET6)
+	{
+		const ip6_hdr *ip = reinterpret_cast<const ip6_hdr *>(m_buffer);
+		size = ntohs(ip->ip6_plen);
+		ttl = ip->ip6_hops;
+		if (ip->ip6_nxt == 112) // VRRP
+			packet = m_buffer + sizeof(ip6_hdr);
+		else
+		{
+			const ip6_ext *ext = reinterpret_cast<const ip6_ext *>(packet);
+			while (ext->ip6e_nxt != 112)
+			{
+				packet += ext->ip6e_len + 2;
+				size -= ext->ip6e_len + 2;
+				ext = reinterpret_cast<const ip6_ext *>(packet);
+			}
+		}
+	}
 
 	// Verify TTL
 	if (ttl != 255)
@@ -283,9 +315,9 @@ bool VrrpSocket::onSocketPacket ()
 	}
 
 	// Verify VRRP version and type
-	if (m_buffer[0] != 0x31) // VRRPv3 ADVERTISEMENT
+	if (packet[0] != 0x31) // VRRPv3 ADVERTISEMENT
 	{
-		if (m_buffer[0] == 0x21) // VRRPv2 ADVERTISEMENT
+		if (packet[0] == 0x21) // VRRPv2 ADVERTISEMENT
 			syslog(LOG_NOTICE, "%s: Discarded VRRPv2 packet", m_name);
 		else
 			syslog(LOG_NOTICE, "%s: Discarded unknown VRRP packet", m_name);
@@ -295,17 +327,17 @@ bool VrrpSocket::onSocketPacket ()
 	// Verify VRRP checksum
 	if (dstAddress.family() == AF_UNSPEC)
 		syslog(LOG_WARNING, "%s: Unable to get destination address. Checksum will not be verified", m_name);
-	else if (Util::checksum(m_buffer, size, srcAddress, dstAddress) != 0)
+	else if (Util::checksum(packet, size, srcAddress, dstAddress) != 0)
 	{
 		syslog(LOG_NOTICE, "%s: Discarded VRRP packet with invalid checksum", m_name);
 		return false;
 	}
 
 	// Get VRRP parameters
-	std::uint_fast8_t virtualRouterId = m_buffer[1];
-	std::uint_fast8_t priority = m_buffer[2];
-	std::uint_fast8_t addressCount = m_buffer[3];
-	std::uint_fast16_t maxAdvertisementInterval = ((std::uint_fast16_t)(m_buffer[4] & 0x0F) << 8) | m_buffer[5];
+	std::uint_fast8_t virtualRouterId = packet[1];
+	std::uint_fast8_t priority = packet[2];
+	std::uint_fast8_t addressCount = packet[3];
+	std::uint_fast16_t maxAdvertisementInterval = ((std::uint_fast16_t)(packet[4] & 0x0F) << 8) | packet[5];
 
 	// Find event listener for virtual router id
 	EventListenerMap::mapped_type::const_iterator listener = interfaceListenerMap->second.find(virtualRouterId);
@@ -322,7 +354,7 @@ bool VrrpSocket::onSocketPacket ()
 
 	// Create address list
 	IpAddressList addresses;
-	const std::uint8_t *ptr = m_buffer + 8;
+	const std::uint8_t *ptr = packet + 8;
 	for (std::uint_fast8_t i = 0; i != addressCount; ++i, ptr += addressSize)
 		addresses.push_back(IpAddress(m_buffer, m_family));
 
@@ -338,7 +370,7 @@ bool VrrpSocket::onSocketPacket ()
 	return true;
 }
 
-void VrrpSocket::decodeControlMessage (const msghdr &hdr, int &interface, IpAddress &address, std::uint8_t &ttl)
+void VrrpSocket::decodeControlMessage (const msghdr &hdr, int &interface, IpAddress &address)
 {
 	const std::uint8_t *ptr = reinterpret_cast<const std::uint8_t *>(hdr.msg_control);
 	unsigned int remaining = hdr.msg_controllen;
@@ -351,34 +383,20 @@ void VrrpSocket::decodeControlMessage (const msghdr &hdr, int &interface, IpAddr
 			break;
 		}
 
-		if (m_family == AF_INET)
+		if (m_family == AF_INET && hdr->cmsg_level == IPPROTO_IP && hdr->cmsg_type == IP_PKTINFO && hdr->cmsg_len >= sizeof(cmsghdr) + sizeof(in_pktinfo))
 		{
-			if (hdr->cmsg_level == IPPROTO_IP)
-			{
-				if (hdr->cmsg_type == IP_TTL && hdr->cmsg_len >= sizeof(cmsghdr) + 1)
-					ttl = ptr[sizeof(cmsghdr)];
-				else if (hdr->cmsg_type == IP_PKTINFO && hdr->cmsg_len >= sizeof(cmsghdr) + sizeof(in_pktinfo))
-				{
-					const in_pktinfo *pktinfo = reinterpret_cast<const in_pktinfo *>(ptr + sizeof(cmsghdr));
-					interface = pktinfo->ipi_ifindex;
-					address = IpAddress(&pktinfo->ipi_addr, AF_INET);
-				}
-			}
+			const in_pktinfo *pktinfo = reinterpret_cast<const in_pktinfo *>(ptr + sizeof(cmsghdr));
+			interface = pktinfo->ipi_ifindex;
+			address = IpAddress(&pktinfo->ipi_addr, AF_INET);
 		}
-		else if (m_family == AF_INET6)
+		else if (m_family == AF_INET6 && hdr->cmsg_level == IPPROTO_IPV6 && hdr->cmsg_type == IPV6_PKTINFO && hdr->cmsg_len >= sizeof(cmsghdr) + sizeof(in_pktinfo))
 		{
-			if (hdr->cmsg_level == IPPROTO_IPV6)
-			{
-				if (hdr->cmsg_type == IPV6_HOPLIMIT && hdr->cmsg_len >= sizeof(cmsghdr) + 1)
-					ttl = ptr[sizeof(cmsghdr)];
-				else if (hdr->cmsg_type == IPV6_PKTINFO && hdr->cmsg_len >= sizeof(cmsghdr) + sizeof(in_pktinfo))
-				{
-					const in6_pktinfo *pktinfo = reinterpret_cast<const in6_pktinfo *>(ptr + sizeof(cmsghdr));
-					interface = pktinfo->ipi6_ifindex;
-					address = IpAddress(&pktinfo->ipi6_addr, AF_INET6);
-				}
-			}
+			const in6_pktinfo *pktinfo = reinterpret_cast<const in6_pktinfo *>(ptr + sizeof(cmsghdr));
+			interface = pktinfo->ipi6_ifindex;
+			address = IpAddress(&pktinfo->ipi6_addr, AF_INET6);
 		}
+
+		remaining -= hdr->cmsg_len;
 	}
 }
 

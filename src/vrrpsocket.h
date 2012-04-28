@@ -55,7 +55,7 @@ class VrrpSocket
 
 		bool onSocketPacket ();
 
-		void decodeControlMessage (const msghdr &hdr, int &interface, IpAddress &address, std::uint8_t &ttl);
+		void decodeControlMessage (const msghdr &hdr, int &interface, IpAddress &address);
 
 		static void socketCallback (int fd, void *userData);
 
