@@ -72,7 +72,7 @@ class VrrpService : private VrrpEventListener
 
 		inline unsigned int skewTime () const
 		{
-			return ((256 * priority()) * m_masterAdvertisementInterval) / 256;
+			return ((256 - m_priority) * m_masterAdvertisementInterval) / 256;
 		}
 		
 		inline unsigned int masterDownInterval () const

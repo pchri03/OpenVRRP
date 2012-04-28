@@ -38,9 +38,9 @@ VrrpService::VrrpService (int interface, int family, const IpAddress &primaryIpA
 	m_socket(VrrpSocket::instance(m_family))
 {
 	if (m_family == AF_INET)
-		m_name = "VRRP Service IPv4";
+		m_name = "VRRP IPv4 Service";
 	else // if (m_family == AF_INET6)
-		m_name = "VRRP Service IPv6";
+		m_name = "VRRP IPv6 Service";
 
 	m_mac[0] = 0x00;
 	m_mac[1] = 0x00;
@@ -120,7 +120,7 @@ void VrrpService::shutdown ()
 
 void VrrpService::onMasterDownTimer ()
 {
-	if (state() == Backup)
+	if (m_state == Backup)
 	{
 		// We are backup and the master down timer triggered, so we should transition to master
 		setState(Master);
@@ -137,7 +137,7 @@ void VrrpService::onMasterDownTimer ()
 
 void VrrpService::onAdvertisementTimer ()
 {
-	if (state() == Master)
+	if (m_state == Master)
 	{
 		// We are master and the advertisement timer fired, so send an advertisement
 		sendAdvertisement(m_priority);
@@ -153,14 +153,14 @@ void VrrpService::onIncomingVrrpPacket (
 		std::uint_fast16_t maxAdvertisementInterval,
 		const IpAddressList &addresses)
 {
-	if (state() == Backup)
+	if (m_state == Backup)
 	{
 		if (priority == 0)
 		{
 			// The master decided to stop gracefully, wait skew time before transitioning to master
 			m_masterDownTimer.start(skewTime() * 10);
 		}
-		else if (!preemptMode() || priority >= this->priority())
+		else if (!m_preemptMode || priority >= this->priority())
 		{
 			// The right master is running, wait for the next announcement
 			m_masterAdvertisementInterval = maxAdvertisementInterval;
@@ -169,7 +169,7 @@ void VrrpService::onIncomingVrrpPacket (
 			// TODO verify addresses
 		}
 	}
-	else if (state() == Master)
+	else if (m_state == Master)
 	{
 		if (priority == 0)
 		{
