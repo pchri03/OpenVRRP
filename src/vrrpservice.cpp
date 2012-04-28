@@ -21,6 +21,10 @@
 #include "vrrpsocket.h"
 
 #include <syslog.h>
+#include <net/if.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
+#include <sys/ioctl.h>
 
 VrrpService::VrrpService (int interface, int family, const IpAddress &primaryIpAddress, std::uint_fast8_t virtualRouterId, std::uint_fast8_t priority) :
 	m_virtualRouterId(virtualRouterId),
@@ -193,9 +197,9 @@ void VrrpService::onIncomingVrrpPacket (
 	}
 }
 
-void VrrpService::sendAdvertisement (std::uint_least8_t priority)
+bool VrrpService::sendAdvertisement (std::uint_least8_t priority)
 {
-	m_socket->sendPacket(
+	return m_socket->sendPacket(
 			m_outputInterface,
 			m_primaryIpAddress,
 			m_virtualRouterId,
@@ -242,24 +246,60 @@ void VrrpService::joinSolicitedNodeMulticast ()
 	// TODO
 }
 
-void VrrpService::setVirtualMac ()
+bool VrrpService::setVirtualMac ()
 {
-	// TODO
+	if (m_outputInterface == m_interface)
+		return Netlink::setMac(m_outputInterface, m_mac);
+	else
+		return Netlink::toggleInterface(m_outputInterface, true);
 }
 
-void VrrpService::setDefaultMac ()
+bool VrrpService::setDefaultMac ()
 {
-	// TODO
+	if (m_outputInterface == m_interface)
+	{
+		/*
+		struct
+		{
+			std::uint32_t cmd;
+			std::uint32_t size;
+			std::uint8_t mac[6];
+		} packet;
+		packet.cmd = ETHTOOL_GPERMADDR;
+		packet.size = 6;
+		
+		struct ifreq req;
+		if_indextoname(m_interface, req.ifr_ifrn.ifrn_name);
+		req.ifr_ifru.ifru_data = reinterpret_cast<__caddr_t>(&packet);
+
+		if (ioctl(m_socket, SIOCETHTOOL, &req) == -1)
+		{
+			syslog(LOG_ERR, "Error getting permanent hardware address: %m");
+			return false;
+		}
+
+		return Netlink::setMac(m_outputInterface, packet.mac);
+		*/
+		return true;
+	}
+	else
+		return Netlink::toggleInterface(m_outputInterface, false);
 }
 
-void VrrpService::addIpAddresses ()
+bool VrrpService::addIpAddresses ()
 {
-	// TODO
+	bool ret = true;
+	for (IpAddressList::const_iterator addr = m_addresses.begin(); addr != m_addresses.end(); ++addr)
+		ret &= (Netlink::addIpAddress(m_outputInterface, *addr));
+	return ret;
 }
 
-void VrrpService::removeIpAddresses ()
+bool VrrpService::removeIpAddresses ()
 {
-	// TODO
+	bool ret = true;
+	for (IpAddressList::const_iterator addr = m_addresses.begin(); addr != m_addresses.end(); ++addr)
+		ret &= (Netlink::removeIpAddress(m_outputInterface, *addr));
+	return ret;
 }
 
 bool VrrpService::addIpAddress (const IpAddress &address)

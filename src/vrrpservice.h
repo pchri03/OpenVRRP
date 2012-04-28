@@ -124,15 +124,15 @@ class VrrpService : private VrrpEventListener
 		void onMasterDownTimer ();
 		void onAdvertisementTimer ();
 
-		void sendAdvertisement (std::uint_least8_t priority);
+		bool sendAdvertisement (std::uint_least8_t priority);
 		void sendARPs();
 		void sendNeighborAdvertisements();
 		void joinSolicitedNodeMulticast();
-		void setVirtualMac();
-		void setDefaultMac();
+		bool setVirtualMac();
+		bool setDefaultMac();
 		void setState (State state);
-		void addIpAddresses ();
-		void removeIpAddresses ();
+		bool addIpAddresses ();
+		bool removeIpAddresses ();
 
 		static void timerCallback (Timer *timer, void *userData);
 
