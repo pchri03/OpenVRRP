@@ -192,7 +192,7 @@ VrrpSocket *VrrpSocket::instance (int family)
 	else
 		return 0;
 
-	if (*ptr == nullptr)
+	if (*ptr == 0)
 	{
 		VrrpSocket *socket = new VrrpSocket(family);
 		if (socket->error() != 0)

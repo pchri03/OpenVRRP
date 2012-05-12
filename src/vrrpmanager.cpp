@@ -45,11 +45,11 @@ VrrpService *VrrpManager::getService (int interface, std::uint_fast8_t virtualRo
 		else
 		{
 			delete service;
-			return nullptr;
+			return 0;
 		}
 	}
 	else
-		return nullptr;
+		return 0;
 }
 
 void VrrpManager::cleanup ()

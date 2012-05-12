@@ -250,7 +250,7 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress)
 	attr.toPacket(buffer.data() + 32);
 
 	int newInterface = 0;
-	int err = sendNetlinkPacket(buffer.data(), buffer.size(), AF_UNSPEC, nullptr, &newInterface);
+	int err = sendNetlinkPacket(buffer.data(), buffer.size(), AF_UNSPEC, 0, &newInterface);
 	if (err >= 0)
 		return newInterface;
 	else

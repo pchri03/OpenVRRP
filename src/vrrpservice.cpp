@@ -55,7 +55,7 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_mac[4] = (family == AF_INET ? 1 : 2);
 	m_mac[5] = virtualRouterId;
 
-	if (m_socket != nullptr)
+	if (m_socket != 0)
 	{
 		m_outputInterface = Netlink::addMacvlanInterface(m_interface, m_mac);
 		if (m_outputInterface < 0)
@@ -74,7 +74,7 @@ VrrpService::~VrrpService ()
 	if (m_outputInterface != m_interface)
 		Netlink::removeInterface(m_outputInterface);
 
-	if (m_socket != nullptr)
+	if (m_socket != 0)
 		m_socket->removeEventListener(m_interface, m_virtualRouterId);
 }
 

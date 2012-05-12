@@ -44,14 +44,14 @@ int main ()
 	VrrpService *service;
 
 	service = VrrpManager::getService(interface, 1, AF_INET, true);
-	if (service != nullptr)
+	if (service != 0)
 	{
 		service->addIpAddress("192.168.2.220");
 		service->startup();
 	}
 
 	service = VrrpManager::getService(interface, 1, AF_INET6, true);
-	if (service != nullptr)
+	if (service != 0)
 	{
 		service->addIpAddress("FEF0::3");
 		service->startup();
