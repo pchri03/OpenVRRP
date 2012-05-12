@@ -24,10 +24,14 @@
 #include <vector>
 #include <cstdint>
 
+class Interface;
+
+typedef std::vector<Interface> InterfaceList;
+
 class Interface
 {
 	public:
-		explicit Interface (int interface);
+		explicit Interface (int interface = 0);
 		explicit Interface (const char *interface);
 		~Interface ();
 
@@ -43,14 +47,12 @@ class Interface
 		void removeVirtualInterface (const Interface &interface) const;
 
 		int flags () const;
-		void setFlags (int flags, int mask) const
+		void setFlags (int flags, int mask) const;
 
 		bool valid () const;
 
 	private:
 		int m_ifindex;
 };
-
-typedef std::vector<Interface> InterfaceList;
 
 #endif // INCLUDE_INTERFACE_H

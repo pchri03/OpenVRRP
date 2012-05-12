@@ -18,6 +18,8 @@
 
 #include "interface.h"
 
+#include <net/if.h>
+
 Interface::Interface (int interface) :
 	m_ifindex(interface)
 {
@@ -32,39 +34,46 @@ Interface::~Interface ()
 {
 }
 
-IpAddressList Interface::ipAddresses (int family)
+IpAddressList Interface::ipAddresses (int family) const
 {
 	// TODO
+	return IpAddressList();
 }
 
 bool Interface::addIpAddress (const IpAddress &address) const
 {
 	// TODO
+	return false;
 }
 
 bool Interface::removeIpAddress (const IpAddress &address) const
 {
 	// TODO
+	return false;
 }
 
 bool Interface::getMac (std::uint8_t *mac) const
 {
 	// TODO
+	return false;
 }
 
 bool Interface::setMac (const std::uint8_t *mac) const
 {
 	// TODO
+	return false;
 }
 
 InterfaceList Interface::virtualInterfaces () const
 {
 	// TODO
+	return InterfaceList();
 }
 
-Interface Interface::addVirtualInterface (const std::uint8_t mac) const
+Interface Interface::addVirtualInterface (const std::uint8_t *mac) const
 {
 	// TODO
+	return Interface();
 }
 
 void Interface::removeVirtualInterface (const Interface &interface) const
