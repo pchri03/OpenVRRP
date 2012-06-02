@@ -32,9 +32,26 @@ class VrrpService : private VrrpEventListener
 	public:
 		enum State
 		{
-			Initialize,
-			Backup,
-			Master
+			Initialize = 1,
+			Backup = 2,
+			Master = 3
+		};
+
+		enum NewMasterReason
+		{
+			NotMaster = 1,
+			Priority = 2,
+			Preempted = 3,
+			MasterNotResponding = 4
+		};
+
+		enum ProtocolErrorReason
+		{
+			NoError = 0,
+			IpTtlError = 1,
+			VersionError = 2,
+			ChecksumError = 3,
+			VrIdError = 4
 		};
 
 		VrrpService (int interface, int family, std::uint_fast8_t virtualRouterId);
@@ -193,6 +210,18 @@ class VrrpService : private VrrpEventListener
 
 		const char *m_name;
 		int m_error;
+
+		std::uint_fast32_t m_statsMasterTransitions;
+		NewMasterReason m_statsNewMasterReason;
+		std::uint_fast64_t m_statsRcvdAdvertisements;
+		std::uint_fast64_t m_statsAdvIntervalErrors;
+		std::uint_fast64_t m_statsIpTtlErrors;
+		ProtocolErrorReason m_statsProtocolErrReason;
+		std::uint_fast64_t m_statsRcvdPriZeroPackets;
+		std::uint_fast64_t m_statsSentPriZeroPackets;
+		std::uint_fast64_t m_statsRcvdInvalidTypePackets;
+		std::uint_fast64_t m_statsAddressListErrors;
+		std::uint_fast64_t m_statsPacketLengthErrors;
 };
 
 #endif // INCLUDE_OPENVRRP_VRRPSERVICE_H

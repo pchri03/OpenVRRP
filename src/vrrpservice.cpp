@@ -41,7 +41,19 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_interface(interface),
 	m_outputInterface(interface),
 	m_socket(VrrpSocket::instance(m_family)),
-	m_error(0)
+	m_error(0),
+
+	m_statsMasterTransitions(0),
+	m_statsNewMasterReason(NotMaster),
+	m_statsRcvdAdvertisements(0),
+	m_statsAdvIntervalErrors(0),
+	m_statsIpTtlErrors(0),
+	m_statsProtocolErrReason(NoError),
+	m_statsRcvdPriZeroPackets(0),
+	m_statsSentPriZeroPackets(0),
+	m_statsRcvdInvalidTypePackets(0),
+	m_statsAddressListErrors(0),
+	m_statsPacketLengthErrors(0)
 {
 	if (m_family == AF_INET)
 		m_name = "VRRP IPv4 Service";
@@ -118,6 +130,7 @@ void VrrpService::shutdown ()
 	}
 	else if (state() == Master)
 	{
+		// TODO Increment vrrpv3StatisticsSentPriZeroPackets
 		// We are master, so inform everybody that we're leaving
 		m_advertisementTimer.stop();
 		sendAdvertisement(0);
@@ -130,6 +143,7 @@ void VrrpService::onMasterDownTimer ()
 {
 	if (m_state == Backup)
 	{
+		// TODO Increment vrrpv3StatisticsMasterTransitions
 		// We are backup and the master down timer triggered, so we should transition to master
 		setState(Master);
 		if (m_family == AF_INET)
@@ -161,10 +175,12 @@ void VrrpService::onIncomingVrrpPacket (
 		std::uint_fast16_t maxAdvertisementInterval,
 		const IpAddressList &addresses)
 {
+	// TODO Increment vrrpv3StatisticsRcvdAdvertisements
 	if (m_state == Backup)
 	{
 		if (priority == 0)
 		{
+			// TODO Increment vrrpv3StatisticsRcvdPriZeroPackets
 			// The master decided to stop gracefully, wait skew time before transitioning to master
 			m_masterDownTimer.start(skewTime() * 10);
 		}
@@ -181,12 +197,15 @@ void VrrpService::onIncomingVrrpPacket (
 	{
 		if (priority == 0)
 		{
+			// TODO Increment vrrpv3StatisticsRcvdPriZeroPackets
+			// TODO Set pending vrrpv3StatisticsNewMasterReason to priority
 			// The conflicing master is stopping gracefully, so just remind everybody that we are the master
 			sendAdvertisement(m_priority);
 			m_advertisementTimer.start(advertisementInterval() * 10);
 		}
 		else if (priority > m_priority || priority == m_priority && address > m_primaryIpAddress)
 		{
+			// TODO Set pending vrrpv3StatisticsNewMasterReason to priority
 			// The conflicing master has higher priority than us, so we transition to backup
 			m_advertisementTimer.stop();
 			m_masterAdvertisementInterval = maxAdvertisementInterval;
@@ -218,7 +237,7 @@ void VrrpService::setState (State state)
 	{
 		static const char *states[] = {"Initialize", "Backup", "Master"};
 		m_state = state;
-		syslog(LOG_INFO, "%s (Router %u, Interface %u): Changed state to %s", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface, states[m_state]);
+		syslog(LOG_INFO, "%s (Router %u, Interface %u): Changed state to %s", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface, states[m_state - 1]);
 		if (m_state == Master)
 		{
 			if (m_outputInterface != m_interface)

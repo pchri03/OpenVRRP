@@ -288,13 +288,6 @@ bool VrrpSocket::onSocketPacket ()
 		}
 	}
 
-	// Verify TTL
-	if (ttl != 255)
-	{
-		syslog(LOG_NOTICE, "%s: Discarded VRRP packet with TTL %hhu", m_name, ttl);
-		return false;
-	}
-
 	// Verify VRRP header
 	if (size < 8)
 	{
@@ -302,13 +295,11 @@ bool VrrpSocket::onSocketPacket ()
 		return false;
 	}
 
-	// Verify VRRP version and type
-	if (packet[0] != 0x31) // VRRPv3 ADVERTISEMENT
+	// Verify VRRP version
+	if ((packet[0] & 0xF0) != 0x30)
 	{
-		if (packet[0] == 0x21) // VRRPv2 ADVERTISEMENT
-			syslog(LOG_NOTICE, "%s: Discarded VRRPv2 packet", m_name);
-		else
-			syslog(LOG_NOTICE, "%s: Discarded unknown VRRP packet", m_name);
+		// TODO Increment vrrpv3RouterVersionErrors
+		syslog(LOG_NOTICE, "%s: Discarded unknown VRRP packet", m_name);
 		return false;
 	}
 
@@ -317,7 +308,24 @@ bool VrrpSocket::onSocketPacket ()
 		syslog(LOG_WARNING, "%s: Unable to get destination address. Checksum will not be verified", m_name);
 	else if (Util::checksum(packet, size, srcAddress, dstAddress) != 0)
 	{
+		// TODO Increment vrrpv3RouterChecksumErrors
 		syslog(LOG_NOTICE, "%s: Discarded VRRP packet with invalid checksum", m_name);
+		return false;
+	}
+
+	// Verify VRRP type
+	if ((packet[0] & 0x0F) != 0x01)
+	{
+		// TODO Increment vrrpv3StatisticsRcvdInvalidTypePackets
+		syslog(LOG_NOTICE, "%s: Discarded VRRP packet with unknown type", m_name);
+		return false;
+	}
+
+	// Verify TTL
+	if (ttl != 255)
+	{
+		// TODO Increment vrrpv3StatisticsIpTtlErrors
+		syslog(LOG_NOTICE, "%s: Discarded VRRP packet with TTL %hhu", m_name, ttl);
 		return false;
 	}
 
@@ -330,12 +338,16 @@ bool VrrpSocket::onSocketPacket ()
 	// Find event listener for virtual router id
 	EventListenerMap::mapped_type::const_iterator listener = interfaceListenerMap->second.find(virtualRouterId);
 	if (listener == interfaceListenerMap->second.end())
+	{
+		// TODO Increment vrrpv3RouterVrIdErrors
 		return false;
+	}
 
 	// Verify VRRP packet size
 	unsigned int addressSize = IpAddress::familySize(m_family);
 	if (size < 8 + addressCount * addressSize)
 	{
+		// TODO Increment vrrpv3StatisticsPacketLengthErrors
 		syslog(LOG_NOTICE, "%s: Discarded incomplete VRRP packet", m_name);
 		return false;
 	}

@@ -82,5 +82,7 @@ bool VrrpManager::setup (const Configuration &config)
 	for (IpAddressList::const_iterator address = addresses.begin(); address != addresses.end(); ++address)
 		service->addIpAddress(*address);
 
+	service->startup();
+
 	return true;
 }

@@ -40,10 +40,17 @@ ConfigurationList Configuration::parseConfigurationFile (const char *filename)
 {
 	ConfigurationList list;
 
-	Configuration config(AF_INET, "Test");
+	Configuration config(AF_INET, "Test 1");
 	config.setInterface(if_nametoindex("eth0"));
 	config.setVirtualRouterId(1);
 	config.addAddress("192.168.1.10");
+	list.push_back(config);
+
+	config = Configuration(AF_INET, "Test 2");
+	config.setInterface(if_nametoindex("eth0"));
+	config.setVirtualRouterId(2);
+	config.addAddress("192.168.1.11");
+	config.setPriority(200);
 	list.push_back(config);
 
 	return list;
