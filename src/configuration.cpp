@@ -16,34 +16,35 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "mainloop.h"
-#include "vrrpservice.h"
-#include "vrrpmanager.h"
-#include "vrrpsocket.h"
-#include "ipaddress.h"
+#include "configuration.h"
+
+#include <cstring>
+#include <fstream>
 
 #include <net/if.h>
-#include <arpa/inet.h>
-#include <syslog.h>
-#include <iostream>
-#include <cstdlib>
 
-static void cleanup ()
+Configuration::Configuration (int family, const char *name) :
+	m_family(family),
+	m_virtualRouterId(0),
+	m_priority(100),
+	m_advertisementInterval(100),
+	m_preemptionMode(true),
+	m_acceptMode(true)
 {
-	VrrpManager::cleanup();
-	VrrpSocket::cleanup();
+	int size = std::strlen(name);
+	m_name.resize(size);
+	std::memcpy(m_name.data(), name, size);
 }
 
-int main ()
+ConfigurationList Configuration::parseConfigurationFile (const char *filename)
 {
-	openlog("openvrrp", LOG_PERROR, LOG_DAEMON);
+	ConfigurationList list;
 
-	std::atexit(cleanup);
+	Configuration config(AF_INET, "Test");
+	config.setInterface(if_nametoindex("eth0"));
+	config.setVirtualRouterId(1);
+	config.addAddress("192.168.1.10");
+	list.push_back(config);
 
-
-	ConfigurationList configs = Configuration::parseConfigurationFile(0);
-	for (ConfigurationList::const_iterator config = configs.begin(); config != configs.end(); ++config)
-		VrrpManager::setup(*config);
-
-	return MainLoop::run() ? 0 : -1;
+	return list;
 }

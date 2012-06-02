@@ -64,3 +64,23 @@ void VrrpManager::cleanup ()
 	}
 
 }
+
+bool VrrpManager::setup (const Configuration &config)
+{
+	VrrpService *service = getService(config.interface(), config.virtualRouterId(), config.family(), true);
+	if (service == 0)
+		return false;
+
+	if (config.primaryIpAddress().family() != 0)
+		service->setPrimaryIpAddress(config.primaryIpAddress());
+	service->setPriority(config.priority());
+	service->setAdvertisementInterval(config.advertisementInterval());
+	service->setPreemptMode(config.preemptionMode());
+	service->setAcceptMode(config.acceptMode());
+
+	IpAddressList addresses = config.addresses();
+	for (IpAddressList::const_iterator address = addresses.begin(); address != addresses.end(); ++address)
+		service->addIpAddress(*address);
+
+	return true;
+}
