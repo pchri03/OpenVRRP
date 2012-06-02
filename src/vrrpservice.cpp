@@ -53,7 +53,9 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_statsSentPriZeroPackets(0),
 	m_statsRcvdInvalidTypePackets(0),
 	m_statsAddressListErrors(0),
-	m_statsPacketLengthErrors(0)
+	m_statsPacketLengthErrors(0),
+
+	m_pendingNewMasterReason(MasterNotResponding)
 {
 	if (m_family == AF_INET)
 		m_name = "VRRP IPv4 Service";
@@ -110,6 +112,7 @@ void VrrpService::startup ()
 		else // if (m_family == AF_INET6)
 			sendNeighborAdvertisements();
 		m_advertisementTimer.start(m_advertisementInterval * 10);
+		m_statsNewMasterReason = Preempted;
 	}
 	else
 	{
@@ -117,6 +120,7 @@ void VrrpService::startup ()
 		m_masterAdvertisementInterval = m_advertisementInterval;
 		m_masterDownTimer.start(masterDownInterval() * 10);
 		setState(Backup);
+		m_statsNewMasterReason = NotMaster;
 	}
 }
 
@@ -130,11 +134,12 @@ void VrrpService::shutdown ()
 	}
 	else if (state() == Master)
 	{
-		// TODO Increment vrrpv3StatisticsSentPriZeroPackets
 		// We are master, so inform everybody that we're leaving
 		m_advertisementTimer.stop();
 		sendAdvertisement(0);
 		setState(Initialize);
+		
+		++m_statsSentPriZeroPackets;
 	}
 
 }
@@ -143,7 +148,6 @@ void VrrpService::onMasterDownTimer ()
 {
 	if (m_state == Backup)
 	{
-		// TODO Increment vrrpv3StatisticsMasterTransitions
 		// We are backup and the master down timer triggered, so we should transition to master
 		setState(Master);
 		if (m_family == AF_INET)
@@ -154,6 +158,9 @@ void VrrpService::onMasterDownTimer ()
 			sendNeighborAdvertisements();
 		}
 		m_advertisementTimer.start(m_advertisementInterval * 10);
+
+		++m_statsMasterTransitions;
+		m_statsNewMasterReason = m_pendingNewMasterReason;
 	}
 }
 
@@ -175,14 +182,16 @@ void VrrpService::onIncomingVrrpPacket (
 		std::uint_fast16_t maxAdvertisementInterval,
 		const IpAddressList &addresses)
 {
-	// TODO Increment vrrpv3StatisticsRcvdAdvertisements
+	++m_statsRcvdAdvertisements;
 	if (m_state == Backup)
 	{
 		if (priority == 0)
 		{
-			// TODO Increment vrrpv3StatisticsRcvdPriZeroPackets
 			// The master decided to stop gracefully, wait skew time before transitioning to master
 			m_masterDownTimer.start(skewTime() * 10);
+
+			++m_statsRcvdPriZeroPackets;
+			m_pendingNewMasterReason = Priority;
 		}
 		else if (!m_preemptMode || priority >= this->priority())
 		{
@@ -191,27 +200,34 @@ void VrrpService::onIncomingVrrpPacket (
 			m_masterDownTimer.start(masterDownInterval() * 10);
 
 			// TODO verify addresses
+			m_pendingNewMasterReason = MasterNotResponding;
 		}
+		else if (m_preemptMode)
+			m_pendingNewMasterReason = Preempted;
+		else
+			m_pendingNewMasterReason = Priority;
 	}
 	else if (m_state == Master)
 	{
 		if (priority == 0)
 		{
-			// TODO Increment vrrpv3StatisticsRcvdPriZeroPackets
-			// TODO Set pending vrrpv3StatisticsNewMasterReason to priority
 			// The conflicing master is stopping gracefully, so just remind everybody that we are the master
 			sendAdvertisement(m_priority);
 			m_advertisementTimer.start(advertisementInterval() * 10);
+
+			++m_statsRcvdPriZeroPackets;
+			m_pendingNewMasterReason = Priority;
 		}
 		else if (priority > m_priority || priority == m_priority && address > m_primaryIpAddress)
 		{
-			// TODO Set pending vrrpv3StatisticsNewMasterReason to priority
 			// The conflicing master has higher priority than us, so we transition to backup
 			m_advertisementTimer.stop();
 			m_masterAdvertisementInterval = maxAdvertisementInterval;
 			m_masterDownTimer.start(masterDownInterval() * 10);
 			setState(Backup);
 			setDefaultMac();
+
+			m_pendingNewMasterReason = Priority;
 		}
 		else
 		{
@@ -237,7 +253,13 @@ void VrrpService::setState (State state)
 	{
 		static const char *states[] = {"Initialize", "Backup", "Master"};
 		m_state = state;
-		syslog(LOG_INFO, "%s (Router %u, Interface %u): Changed state to %s", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface, states[m_state - 1]);
+		if (m_state == Master)
+		{
+			static const char *reasons[] = {"NotMaster", "Priority", "Preempted", "MasterNotResponding"};
+			syslog(LOG_INFO, "%s (Router %u, Interface %u): Changed state to %s (Reason: %s)", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface, states[m_state - 1], reasons[m_pendingNewMasterReason - 1]);
+		}
+		else
+			syslog(LOG_INFO, "%s (Router %u, Interface %u): Changed state to %s", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface, states[m_state - 1]);
 		if (m_state == Master)
 		{
 			if (m_outputInterface != m_interface)

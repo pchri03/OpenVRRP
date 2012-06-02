@@ -222,6 +222,8 @@ class VrrpService : private VrrpEventListener
 		std::uint_fast64_t m_statsRcvdInvalidTypePackets;
 		std::uint_fast64_t m_statsAddressListErrors;
 		std::uint_fast64_t m_statsPacketLengthErrors;
+
+		NewMasterReason m_pendingNewMasterReason;
 };
 
 #endif // INCLUDE_OPENVRRP_VRRPSERVICE_H
