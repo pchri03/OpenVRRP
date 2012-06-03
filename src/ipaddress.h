@@ -70,6 +70,24 @@ class IpAddress
 		const sockaddr *socketAddress () const;
 		sockaddr *socketAddress ();
 
+		std::uint_fast16_t port () const
+		{
+			if (m_addr.common.sa_family == AF_INET)
+				return ntohs(m_addr.ipv4.sin_port);
+			else if (m_addr.common.sa_family == AF_INET6)
+				return ntohs(m_addr.ipv6.sin6_port);
+			else
+				return 0;
+		}
+
+		void setPort (std::uint_fast16_t port)
+		{
+			if (m_addr.common.sa_family == AF_INET)
+				m_addr.ipv4.sin_port = htons(port);
+			else if (m_addr.common.sa_family == AF_INET6)
+				m_addr.ipv6.sin6_port = htons(port);
+		}
+
 		static unsigned int familySize (int family)
 		{
 			if (family == AF_INET)

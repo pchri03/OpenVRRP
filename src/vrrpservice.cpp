@@ -123,6 +123,7 @@ void VrrpService::startup ()
 		// Update statistics
 		++m_statsMasterTransitions;
 		m_statsNewMasterReason = Preempted;
+		m_masterIpAddress = m_primaryIpAddress;
 	}
 	else
 	{
@@ -172,6 +173,7 @@ void VrrpService::onMasterDownTimer ()
 		// Update statistics
 		++m_statsMasterTransitions;
 		m_statsNewMasterReason = m_pendingNewMasterReason;
+		m_masterIpAddress = m_primaryIpAddress;
 	}
 }
 
@@ -211,6 +213,7 @@ void VrrpService::onIncomingVrrpPacket (
 			// The right master is running, wait for the next announcement
 			m_masterAdvertisementInterval = maxAdvertisementInterval;
 			m_masterDownTimer.start(masterDownInterval() * 10);
+			m_masterIpAddress = address;
 
 			// Check address list
 			std::vector<IpAddress> incomingList(addresses.size());

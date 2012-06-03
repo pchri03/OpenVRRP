@@ -24,21 +24,71 @@
 
 IpAddress::IpAddress (const char *address)
 {
+	std::uint8_t buffer[16];
+
 	std::memset(&m_addr, 0, sizeof(m_addr));
 
-	std::uint8_t buffer[16];
+	// Try IPv6 with brackets and optional port number
+	if (address[0] == '[')
+	{
+		const char *end = std::strchr(address + 1, ']');
+		if (end != 0)
+		{
+			std::ptrdiff_t size = end - address - 1;
+			if (size <= sizeof(INET6_ADDRSTRLEN))
+			{
+				char tmp[INET6_ADDRSTRLEN + 1];
+				std::memcpy(tmp, address + 1, size);
+				tmp[size] = 0;
+
+				if (inet_pton(AF_INET6, tmp, buffer) == 1)
+				{
+					m_addr.ipv6.sin6_family = AF_INET6;
+					std::memcpy(&m_addr.ipv6.sin6_addr, buffer, 16);
+					
+					if (end[1] == ':')
+						m_addr.ipv6.sin6_port = htons(std::atoi(end + 2));
+				}
+			}
+		}
+		return;
+	}
+
+	// Try IPv6
 	if (inet_pton(AF_INET6, address, buffer) == 1)
 	{
 		m_addr.ipv6.sin6_family = AF_INET6;
 		std::memcpy(&m_addr.ipv6.sin6_addr, buffer, 16);
+		return;
 	}
-	else if (inet_pton(AF_INET, address, buffer) == 1)
+
+	// Try IPv4 with port
+	const char *port = std::strchr(address, ':');
+	if (port != 0)
+	{
+		std::ptrdiff_t size = port - address;
+		if (size <= INET_ADDRSTRLEN)
+		{
+			char tmp[INET_ADDRSTRLEN + 1];
+			std::memcpy(tmp, address, size);
+			tmp[size] = 0;
+
+			if (inet_pton(AF_INET, tmp, buffer) == 1)
+			{
+				m_addr.ipv4.sin_family = AF_INET;
+				m_addr.ipv4.sin_addr.s_addr = *reinterpret_cast<const std::uint32_t *>(buffer);
+				m_addr.ipv4.sin_port = htons(std::atoi(port + 1));
+			}
+		}
+		return;
+	}
+
+	// Try IPv4 without port
+	if (inet_pton(AF_INET, address, buffer) == 1)
 	{
 		m_addr.ipv4.sin_family = AF_INET;
 		m_addr.ipv4.sin_addr.s_addr = *reinterpret_cast<const std::uint32_t *>(buffer);
 	}
-	else
-		m_addr.common.sa_family = AF_UNSPEC;
 }
 
 IpAddress::IpAddress (const void *data, int family)
@@ -86,7 +136,7 @@ std::string IpAddress::toString () const
 	if (m_addr.common.sa_family == AF_UNSPEC)
 		return std::string();
 	
-	char buffer[40];
+	char buffer[INET6_ADDRSTRLEN + 7];
 	inet_ntop(m_addr.common.sa_family, data(), buffer, sizeof(buffer));
 	return std::string(buffer);
 }

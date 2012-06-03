@@ -77,6 +77,11 @@ class VrrpService : private VrrpEventListener
 			return m_primaryIpAddress;
 		}
 
+		inline IpAddress masterIpAddress () const
+		{
+			return m_masterIpAddress;
+		}
+
 		inline bool setPrimaryIpAddress (const IpAddress &address)
 		{
 			if (m_state == Initialize && address.family() == m_family)
@@ -192,6 +197,7 @@ class VrrpService : private VrrpEventListener
 		std::uint_fast8_t m_virtualRouterId;
 		std::uint_fast8_t m_priority;
 		IpAddress m_primaryIpAddress;
+		IpAddress m_masterIpAddress;
 		unsigned int m_advertisementInterval;
 		unsigned int m_masterAdvertisementInterval;
 		bool m_preemptMode;

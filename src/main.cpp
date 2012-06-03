@@ -21,6 +21,7 @@
 #include "vrrpmanager.h"
 #include "vrrpsocket.h"
 #include "ipaddress.h"
+#include "telnetserver.h"
 
 #include <net/if.h>
 #include <arpa/inet.h>
@@ -40,6 +41,8 @@ int main ()
 
 	std::atexit(cleanup);
 
+	TelnetServer server("127.0.0.1:7777");
+	server.start();
 
 	ConfigurationList configs = Configuration::parseConfigurationFile(0);
 	for (ConfigurationList::const_iterator config = configs.begin(); config != configs.end(); ++config)

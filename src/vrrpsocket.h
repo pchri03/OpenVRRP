@@ -47,6 +47,21 @@ class VrrpSocket
 		static VrrpSocket *instance (int family);
 		static void cleanup ();
 
+		static std::uint_fast64_t routerChecksumErrors ()
+		{
+			return m_routerChecksumErrors;
+		}
+
+		static std::uint_fast64_t routerVersionErrors ()
+		{
+			return m_routerVersionErrors;
+		}
+
+		static std::uint_fast64_t routerVrIdErrors ()
+		{
+			return m_routerVrIdErrors;
+		}
+
 	private:
 		explicit VrrpSocket (int family);
 		~VrrpSocket ();
