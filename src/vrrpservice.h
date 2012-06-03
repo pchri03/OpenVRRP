@@ -150,7 +150,10 @@ class VrrpService : private VrrpEventListener
 
 		bool addIpAddress (const IpAddress &address);
 		bool removeIpAddress (const IpAddress &address);
-		const IpAddressList &addresses () const;
+		const IpAddressList &addresses () const
+		{
+			return m_addresses;
+		}
 
 		inline State state () const
 		{
