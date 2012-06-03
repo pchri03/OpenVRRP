@@ -20,6 +20,7 @@
 #include "util.h"
 #include "vrrpeventlistener.h"
 #include "vrrpsocket.h"
+#include "vrrpmanager.h"
 
 #include <cerrno>
 #include <cstring>
@@ -35,6 +36,10 @@
 
 VrrpSocket *VrrpSocket::m_ipv4Instance = 0;
 VrrpSocket *VrrpSocket::m_ipv6Instance = 0;
+
+std::uint_fast64_t VrrpSocket::m_routerVersionErrors = 0;
+std::uint_fast64_t VrrpSocket::m_routerChecksumErrors = 0;
+std::uint_fast64_t VrrpSocket::m_routerVrIdErrors = 0;
 
 VrrpSocket::VrrpSocket (int family) :
 	m_family(family),
@@ -292,14 +297,34 @@ bool VrrpSocket::onSocketPacket ()
 	if (size < 8)
 	{
 		syslog(LOG_NOTICE, "%s: Discarded VRRP packet smaller than 8 bytes", m_name);
+
+		// Since packet is too small, we cannot know the router id for sure. VRRPV3-MIB requires us to update vrrpv3StatisticsPacketLengthError, so we'll notify all services
+		for (EventListenerMap::mapped_type::const_iterator listener = interfaceListenerMap->second.begin(); listener != interfaceListenerMap->second.end(); ++listener)
+		{
+			listener->second->onIncomingVrrpError(interface, listener->first, VrrpEventListener::PacketLengthError);
+		}
 		return false;
 	}
 
 	// Verify VRRP version
 	if ((packet[0] & 0xF0) != 0x30)
 	{
-		// TODO Increment vrrpv3RouterVersionErrors
 		syslog(LOG_NOTICE, "%s: Discarded unknown VRRP packet", m_name);
+
+		if (packet[0] == 0x21)
+		{
+			// Packet is VRRPv2 - extract virtual router id and attempt to notify the service
+			std::uint_fast8_t virtualRouterId = packet[1];
+
+			// TODO - Verify checksum 
+
+			EventListenerMap::mapped_type::const_iterator listener = interfaceListenerMap->second.find(virtualRouterId);
+			if (listener != interfaceListenerMap->second.end())
+				listener->second->onIncomingVrrpError(interface, listener->first, VrrpEventListener::VersionError);
+		}
+
+		// Also increment global statistics
+		++m_routerVersionErrors;
 		return false;
 	}
 
@@ -308,24 +333,24 @@ bool VrrpSocket::onSocketPacket ()
 		syslog(LOG_WARNING, "%s: Unable to get destination address. Checksum will not be verified", m_name);
 	else if (Util::checksum(packet, size, srcAddress, dstAddress) != 0)
 	{
-		// TODO Increment vrrpv3RouterChecksumErrors
 		syslog(LOG_NOTICE, "%s: Discarded VRRP packet with invalid checksum", m_name);
+
+		// Increment global statistics
+		++m_routerChecksumErrors;
 		return false;
 	}
 
 	// Verify VRRP type
 	if ((packet[0] & 0x0F) != 0x01)
 	{
-		// TODO Increment vrrpv3StatisticsRcvdInvalidTypePackets
 		syslog(LOG_NOTICE, "%s: Discarded VRRP packet with unknown type", m_name);
-		return false;
-	}
+		
+		// Since packet type is wrong, we cannot know the router id for sure. VRRPV3-MIB requires us to update vrrpv3StatisticsRcvdInvalidTypePackets, so we'll notify all services
+		for (EventListenerMap::mapped_type::const_iterator listener = interfaceListenerMap->second.begin(); listener != interfaceListenerMap->second.end(); ++listener)
+		{
+			listener->second->onIncomingVrrpError(interface, listener->first, VrrpEventListener::InvalidTypeError);
+		}
 
-	// Verify TTL
-	if (ttl != 255)
-	{
-		// TODO Increment vrrpv3StatisticsIpTtlErrors
-		syslog(LOG_NOTICE, "%s: Discarded VRRP packet with TTL %hhu", m_name, ttl);
 		return false;
 	}
 
@@ -339,7 +364,23 @@ bool VrrpSocket::onSocketPacket ()
 	EventListenerMap::mapped_type::const_iterator listener = interfaceListenerMap->second.find(virtualRouterId);
 	if (listener == interfaceListenerMap->second.end())
 	{
-		// TODO Increment vrrpv3RouterVrIdErrors
+		// We are not associated with the virtual router id in mind, but VRRPV3-MIB requires us to set vrrpv3StatisticsProtoErrReason to VrIdError, so we'll notify all services
+		for (EventListenerMap::mapped_type::const_iterator listener = interfaceListenerMap->second.begin(); listener != interfaceListenerMap->second.end(); ++listener)
+		{
+			listener->second->onIncomingVrrpError(interface, listener->first, VrrpEventListener::VrIdError);
+		}
+
+		++m_routerVrIdErrors;
+		return false;
+	}
+
+	// Verify TTL
+	if (ttl != 255)
+	{
+		syslog(LOG_NOTICE, "%s: Discarded VRRP packet with TTL %hhu", m_name, ttl);
+
+		// VRRPV3-MIB requires us to update vrrpv3StatisticsIpTtlErrors and set vrrpv3StatisticsProtoErrReason to VrId, so we'll notify the service
+		listener->second->onIncomingVrrpError(interface, virtualRouterId, VrrpEventListener::IpTtlError);
 		return false;
 	}
 
@@ -347,8 +388,11 @@ bool VrrpSocket::onSocketPacket ()
 	unsigned int addressSize = IpAddress::familySize(m_family);
 	if (size < 8 + addressCount * addressSize)
 	{
-		// TODO Increment vrrpv3StatisticsPacketLengthErrors
 		syslog(LOG_NOTICE, "%s: Discarded incomplete VRRP packet", m_name);
+
+		// VRRPV3-MIB specifies vrrpv3StatisticsPacketLengthErrors to be the number of packets received less than the length of the VRRP header, but it makes more sense to
+		// register all packets with invalid lengths, so we'll notify the service
+		listener->second->onIncomingVrrpError(interface, virtualRouterId, VrrpEventListener::PacketLengthError); // Expected to increment vrrpv3StatisticsPacketLengthErrors
 		return false;
 	}
 

@@ -44,6 +44,17 @@ class VrrpManager
 
 		static void cleanup ();
 
+		enum ProtocolErrorReason
+		{
+			NoError = 0,
+			IpTtlError = 1,
+			VersionError = 2,
+			ChecksumError = 3,
+			VrIdError = 4
+		};
+
+		static void onProtocolError (ProtocolErrorReason error);
+
 	private:
 		static VrrpServiceMap m_services;
 };

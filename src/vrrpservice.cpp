@@ -20,6 +20,8 @@
 #include "vrrpservice.h"
 #include "vrrpsocket.h"
 
+#include <algorithm>
+
 #include <syslog.h>
 #include <net/if.h>
 #include <linux/ethtool.h>
@@ -55,7 +57,9 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_statsAddressListErrors(0),
 	m_statsPacketLengthErrors(0),
 
-	m_pendingNewMasterReason(MasterNotResponding)
+	m_pendingNewMasterReason(MasterNotResponding),
+
+	m_autoSync(false)
 {
 	if (m_family == AF_INET)
 		m_name = "VRRP IPv4 Service";
@@ -71,8 +75,8 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 
 	if (m_socket != 0)
 	{
-		char name[sizeof("vrrpXXX.X")];
-		std::sprintf(name, "vrrp%hhu.%u", virtualRouterId, (family == AF_INET ? 4 : 6));
+		char name[sizeof("vrrp.xxxxxxxxxxx.xxx.x")];
+		std::sprintf(name, "vrrp.%i.%hhu.%u", interface, virtualRouterId, (family == AF_INET ? 1 : 2));
 		m_outputInterface = Netlink::addMacvlanInterface(m_interface, m_mac, name);
 		if (m_outputInterface < 0)
 			m_outputInterface = m_interface;
@@ -113,7 +117,11 @@ void VrrpService::startup ()
 			sendARPs();
 		else // if (m_family == AF_INET6)
 			sendNeighborAdvertisements();
+
 		m_advertisementTimer.start(m_advertisementInterval * 10);
+		
+		// Update statistics
+		++m_statsMasterTransitions;
 		m_statsNewMasterReason = Preempted;
 	}
 	else
@@ -161,6 +169,7 @@ void VrrpService::onMasterDownTimer ()
 		}
 		m_advertisementTimer.start(m_advertisementInterval * 10);
 
+		// Update statistics
 		++m_statsMasterTransitions;
 		m_statsNewMasterReason = m_pendingNewMasterReason;
 	}
@@ -185,6 +194,8 @@ void VrrpService::onIncomingVrrpPacket (
 		const IpAddressList &addresses)
 {
 	++m_statsRcvdAdvertisements;
+	m_statsProtocolErrReason = NoError;
+
 	if (m_state == Backup)
 	{
 		if (priority == 0)
@@ -201,7 +212,47 @@ void VrrpService::onIncomingVrrpPacket (
 			m_masterAdvertisementInterval = maxAdvertisementInterval;
 			m_masterDownTimer.start(masterDownInterval() * 10);
 
-			// TODO verify addresses
+			// Check address list
+			std::vector<IpAddress> incomingList(addresses.size());
+			std::copy(addresses.begin(), addresses.end(), incomingList.begin());
+			std::sort(incomingList.begin(), incomingList.end());
+			
+			std::vector<IpAddress> serviceList(m_addresses.size());
+			std::copy(m_addresses.begin(), m_addresses.end(), serviceList.begin());
+			std::sort(serviceList.begin(), serviceList.end());
+
+			std::vector<IpAddress> difference(std::max(incomingList.size(), serviceList.size()));
+			std::vector<IpAddress>::iterator differenceEnd = std::set_difference(incomingList.begin(), incomingList.end(), serviceList.begin(), serviceList.end(), difference.begin());
+
+			std::vector<IpAddress>::size_type differenceCount = differenceEnd - difference.begin();
+			if (differenceCount > 0)
+			{
+				// There are differences between incoming address list and our list
+				syslog(LOG_WARNING, "%s (Router %u, Interface %u): Address list mismatch", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface);
+				++m_statsAddressListErrors;
+
+				// If allowed, update our address list to reflect that of the master
+				if (m_autoSync)
+				{
+					std::vector<IpAddress> list(differenceCount);
+					std::vector<IpAddress>::iterator listEnd;
+					
+					listEnd = std::set_intersection(difference.begin(), differenceEnd, incomingList.begin(), incomingList.end(), list.begin());
+					for (std::vector<IpAddress>::iterator addr = list.begin(); addr != listEnd; ++addr)
+					{
+						addIpAddress(*addr);
+					}
+
+					listEnd = std::set_intersection(difference.begin(), differenceEnd, serviceList.begin(), serviceList.end(), list.begin());
+					for (std::vector<IpAddress>::iterator addr = list.begin(); addr != listEnd; ++addr)
+					{
+						removeIpAddress(*addr);
+					}
+
+					syslog(LOG_NOTICE, "%s (Router %u, Interface %u): Synchronized address list", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface);
+				}
+			}
+
 			m_pendingNewMasterReason = MasterNotResponding;
 		}
 		else if (m_preemptMode)
@@ -361,4 +412,44 @@ bool VrrpService::removeIpAddress (const IpAddress &address)
 {
 	// TODO
 	return false;
+}
+
+void VrrpService::setProtocolErrorReason (ProtocolErrorReason reason)
+{
+	m_statsProtocolErrReason = reason;
+	// TODO Send SNMP notificaiton
+}
+
+void VrrpService::onIncomingVrrpError (unsigned int interface, std::uint_fast8_t virtualRouterId, VrrpEventListener::Error error)
+{
+	switch (error)
+	{
+		case VrrpEventListener::ChecksumError:
+			setProtocolErrorReason(ChecksumError);
+			break;
+
+		case VrrpEventListener::VersionError:
+			setProtocolErrorReason(VersionError);
+			break;
+
+		case VrrpEventListener::VrIdError:
+			setProtocolErrorReason(VrIdError);
+			break;
+			
+		case VrrpEventListener::AdvIntervalError:
+			++m_statsAdvIntervalErrors;
+			break;
+
+		case VrrpEventListener::IpTtlError:
+			setProtocolErrorReason(IpTtlError);
+			break;
+
+		case VrrpEventListener::InvalidTypeError:
+			++m_statsRcvdInvalidTypePackets;
+			break;
+
+		case VrrpEventListener::PacketLengthError:
+			++m_statsPacketLengthErrors;
+			break;
+	}
 }

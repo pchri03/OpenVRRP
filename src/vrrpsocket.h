@@ -70,6 +70,9 @@ class VrrpSocket
 		EventListenerMap m_listeners;
 		std::uint8_t m_buffer[2048];
 		std::uint8_t m_controlBuffer[1024];
+		static std::uint_fast64_t m_routerChecksumErrors;
+		static std::uint_fast64_t m_routerVersionErrors;
+		static std::uint_fast64_t m_routerVrIdErrors;
 
 	private:
 		static VrrpSocket *m_ipv4Instance;

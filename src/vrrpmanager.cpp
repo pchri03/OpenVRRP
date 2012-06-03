@@ -86,3 +86,4 @@ bool VrrpManager::setup (const Configuration &config)
 
 	return true;
 }
+

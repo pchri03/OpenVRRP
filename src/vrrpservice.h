@@ -169,6 +169,8 @@ class VrrpService : private VrrpEventListener
 				std::uint_fast16_t maxAdvertisementInterval,
 				const IpAddressList &addresses);
 
+		virtual void onIncomingVrrpError (unsigned int interface, std::uint_fast8_t virtualRouterId, VrrpEventListener::Error error);
+
 		void onMasterDownTimer ();
 		void onAdvertisementTimer ();
 
@@ -181,6 +183,8 @@ class VrrpService : private VrrpEventListener
 		void setState (State state);
 		bool addIpAddresses ();
 		bool removeIpAddresses ();
+
+		void setProtocolErrorReason (ProtocolErrorReason reason);
 
 		static void timerCallback (Timer *timer, void *userData);
 
@@ -224,6 +228,8 @@ class VrrpService : private VrrpEventListener
 		std::uint_fast64_t m_statsPacketLengthErrors;
 
 		NewMasterReason m_pendingNewMasterReason;
+
+		bool m_autoSync;
 };
 
 #endif // INCLUDE_OPENVRRP_VRRPSERVICE_H

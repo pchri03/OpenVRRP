@@ -33,6 +33,19 @@ class VrrpEventListener
 				std::uint_fast8_t priority,
 				std::uint_fast16_t maxAdvertisementInterval,
 				const IpAddressList &addresses) = 0;
+
+		enum Error
+		{
+			ChecksumError,
+			VersionError,
+			VrIdError,
+			AdvIntervalError,
+			IpTtlError,
+			InvalidTypeError,
+			PacketLengthError
+		};		
+
+		virtual void onIncomingVrrpError (unsigned int interface, std::uint_fast8_t virtualRouterId, Error error) = 0;
 };
 
 #endif // INCLUDE_OPENVRRP_VRRPEVENTLISTENER_H
