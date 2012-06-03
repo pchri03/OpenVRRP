@@ -210,8 +210,9 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 	//   }
 	// }
 
-	Attribute address(IFLA_ADDRESS, macAddress, 6);
 	Attribute ifname(IFLA_IFNAME, name, std::strlen(name));
+	Attribute address(IFLA_ADDRESS, macAddress, 6);
+	Attribute operstate(IFLA_OPERSTATE, 6); // IF_OPER_UP
 	Attribute link(IFLA_LINK, (std::uint32_t)interface);
 	Attribute linkinfo(IFLA_LINKINFO);
 	Attribute kind(IFLA_INFO_KIND, "macvlan", 8);
@@ -222,6 +223,7 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 	Attribute attr;
 	attr.addAttribute(&ifname);
 	attr.addAttribute(&address);
+	attr.addAttribute(&operstate);
 	attr.addAttribute(&link);
 	attr.addAttribute(&linkinfo);
 	{
