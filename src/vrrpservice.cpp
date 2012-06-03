@@ -71,7 +71,9 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 
 	if (m_socket != 0)
 	{
-		m_outputInterface = Netlink::addMacvlanInterface(m_interface, m_mac);
+		char name[sizeof("vrrpXXX.X")];
+		std::sprintf(name, "vrrp%hhu.%u", virtualRouterId, (family == AF_INET ? 4 : 6));
+		m_outputInterface = Netlink::addMacvlanInterface(m_interface, m_mac, name);
 		if (m_outputInterface < 0)
 			m_outputInterface = m_interface;
 

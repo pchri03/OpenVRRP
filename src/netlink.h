@@ -28,7 +28,7 @@
 class Netlink
 {
 	public:
-		static int addMacvlanInterface (int interface, const std::uint8_t *macAddress);
+		static int addMacvlanInterface (int interface, const std::uint8_t *macAddress, const char *name);
 		static bool removeInterface (int interface);
 		static bool setMac (int interface, const std::uint8_t *macAddress);
 
