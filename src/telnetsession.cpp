@@ -54,6 +54,8 @@
 								"help\n" \
 								RESP_SHOW
 
+#define RESP_PROMPT				"OpenVRRP> "
+
 #define SEND_RESP(str)	write(m_socket, str, sizeof(str) -1)
 
 TelnetSession::TelnetSession (int fd, TelnetServer *server) :
@@ -63,7 +65,7 @@ TelnetSession::TelnetSession (int fd, TelnetServer *server) :
 	m_overflow(false)
 {
 	MainLoop::addMonitor(m_socket, onIncomingData, this);
-	SEND_RESP(RESP_WELCOME);
+	SEND_RESP(RESP_WELCOME RESP_PROMPT);
 }
 
 TelnetSession::~TelnetSession ()
@@ -136,10 +138,9 @@ void TelnetSession::handleCommand (char *command, unsigned int size)
 
 	std::vector<char *> args = splitCommand(command);
 
-	if (args.size() == 0)
-		return;
-
-	onCommand(args);
+	if (args.size() > 0)
+		onCommand(args);
+	SEND_RESP(RESP_PROMPT);
 }
 
 void TelnetSession::onCommand (const std::vector<char *> &argv)
