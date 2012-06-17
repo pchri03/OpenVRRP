@@ -44,9 +44,5 @@ int main ()
 	TelnetServer server("127.0.0.1:7777");
 	server.start();
 
-	ConfigurationList configs = Configuration::parseConfigurationFile(0);
-	for (ConfigurationList::const_iterator config = configs.begin(); config != configs.end(); ++config)
-		VrrpManager::setup(*config);
-
 	return MainLoop::run() ? 0 : -1;
 }

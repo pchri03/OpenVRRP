@@ -38,16 +38,27 @@ class TelnetSession
 		void receiveChunk ();
 		void handleCommand (char *command, unsigned int size);
 		void onCommand (const std::vector<char *> &argv);
+
+		void onAddCommand (const std::vector<char *> &argv);
+		void onAddRouterCommand (const std::vector<char *> &argv);
+
+		void onRemoveCommand (const std::vector<char *> &argv);
+		void onSetCommand (const std::vector<char *> &argv);
+		void onEnableCommand (const std::vector<char *> &argv);
+		void onDisableCommand (const std::vector<char *> &argv);
 		void onShowCommand (const std::vector<char *> &argv);
+
 		void onShowRouterCommand (const std::vector<char *> &argv);
-		void onShowStatCommand (const std::vector<char *> &argv);
-		void onShowRouterStatCommand (const std::vector<char *> &argv);
+		void onShowStatsCommand (const std::vector<char *> &argv);
+		
 		void showRouter (const VrrpService *service);
 		void showRouterStat (const VrrpService *service);
 
 		void sendFormatted (const char *templ, ...);
 
 		static std::vector<char *> splitCommand (char *command);
+
+		static VrrpService *getService (const std::vector<char *> &argv);
 
 	private:
 		int m_socket;

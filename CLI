@@ -1,0 +1,19 @@
+
+
+add router INTF VRID [ipv6]
+add router INTF VRID [ipv6] address IP
+remove router INTF VRID [ipv6]
+remove router INTF VRID [ipv6] address IP
+set router INTF VRID [ipv6] primary IP
+set router INTF VRID [ipv6] priority PRIO
+set router INTF VRID [ipv6] interval MSEC
+set router INTF VRID [ipv6] accept BOOL
+set router INTF VRID [ipv6] preempt BOOL
+set router INTF VRID [ipv6] status [master|slave]
+enable router INTF VRID [ipv6]
+disable router INTF VRID [ipv6]
+show router [INTF] [VRID] [ipv6] [stats]
+show stats
+show
+exit
+help

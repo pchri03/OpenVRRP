@@ -46,6 +46,9 @@ bool TelnetServer::start ()
 		return false;
 	}
 
+	int val = 1;
+	setsockopt(m_socket, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
+
 	if (bind(m_socket, m_address.socketAddress(), m_address.socketAddressSize()) == -1 || listen(m_socket, 10) == -1)
 	{
 		syslog(LOG_ERR, "Error starting telnet server: %s", std::strerror(errno));

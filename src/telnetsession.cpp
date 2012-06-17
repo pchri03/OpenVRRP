@@ -31,28 +31,57 @@
 #include <syslog.h>
 #include <net/if.h>
 
-#define RESP_WELCOME			"OpenVRRP CLI\n"
-
 #define RESP_INVALID_COMMAND	"Invalid command\n"
 #define RESP_NO_SUCH_ROUTER		"No such router\n"
 
-#define RESP_SHOW_ROUTER_STAT_INTERFACE	"show router stat interface INTF [VRID]\n"
+#define RESP_ADD_ROUTER				"add router INTF VRID [ipv6]\n"
+#define RESP_ADD_ROUTER_ADDRESS		"add router INTF VRID [ipv6] address IP\n"
+#define RESP_REMOVE_ROUTER			"remove router INTF VRID [ipv6]\n"
+#define RESP_REMOVE_ROUTER_ADDRESS	"remove router INTF VRID [ipv6] address IP\n"
+#define RESP_SET_ROUTER_PRIMARY		"set router INTF VRID [ipv6] primary IP\n"
+#define RESP_SET_ROUTER_PRIORITY	"set router INTF VRID [ipv6] priority PRIO\n"
+#define RESP_SET_ROUTER_INTERVAL	"set router INTF VRID [ipv6] interval MSEC\n"
+#define RESP_SET_ROUTER_ACCEPT		"set router INTF VRID [ipv6] accept BOOL\n"
+#define RESP_SET_ROUTER_PREEMPT		"set router INTF VRID [ipv6] preempt BOOL\n"
+#define RESP_SET_ROUTER_STATUS		"set router INTF VRID [ipv6] status [master|slave]\n"
+#define RESP_ENABLE_ROUTER			"enable router INTF VRID [ipv6]\n"
+#define RESP_DISABLE_ROUTER			"disable router INTF VRID [ipv6]\n"
+#define RESP_SHOW_ROUTER			"show router [INTF] [VRID] [ipv6] [stats]\n"
+#define RESP_SHOW_STATS				"show stats\n"
 
-#define RESP_SHOW_ROUTER_STAT	"show router stat [VRID]\n" \
-								RESP_SHOW_ROUTER_STAT_INTERFACE
+#define RESP_ADD_ROUTER				RESP_ADD_ROUTER \
+									RESP_ADD_ROUTER_ADDRESS
 
-#define RESP_SHOW_ROUTER_INTERFACE	"show router interface INTF [VRID]\n" \
+#define RESP_ADD					RESP_ADD_ROUTER
 
-#define RESP_SHOW_ROUTER		"show router [VRID]\n" \
-								RESP_SHOW_ROUTER_INTERFACE \
-								RESP_SHOW_ROUTER_STAT
+#define RESP_REMOVE_ROUTER			RESP_REMOVE_ROUTER \
+									RESP_REMOVE_ROUTER_ADDRESS
 
-#define RESP_SHOW				RESP_SHOW_ROUTER \
-								"show stat\n"
+#define RESP_REMOVE					RESP_REMOVE_ROUTER
 
-#define RESP_HELP				"exit\n" \
-								"help\n" \
-								RESP_SHOW
+#define RESP_SET_ROUTER				RESP_SET_ROUTER_PRIMARY \
+									RESP_SET_ROUTER_PRIORITY \
+									RESP_SET_ROUTER_INTERVAL \
+									RESP_SET_ROUTER_ACCEPT \
+									RESP_SET_ROUTER_PREEMPT \
+									RESP_SET_ROUTER_STATUS
+
+#define RESP_SET					RESP_SET_ROUTER
+
+#define RESP_ENABLE					RESP_ENABLE_ROUTER
+
+#define RESP_DISABLE				RESP_DISABLE_ROUTER
+
+#define RESP_SHOW					RESP_SHOW_ROUTER \
+									RESP_SHOW_STATS
+
+#define RESP_HELP					RESP_ADD \
+									RESP_DISABLE \
+									RESP_ENABLE  \
+									"exit\n" \
+									"help\n" \
+									RESP_REMOVE \
+									RESP_SET
 
 #define RESP_PROMPT				"OpenVRRP> "
 
@@ -65,7 +94,7 @@ TelnetSession::TelnetSession (int fd, TelnetServer *server) :
 	m_overflow(false)
 {
 	MainLoop::addMonitor(m_socket, onIncomingData, this);
-	SEND_RESP(RESP_WELCOME RESP_PROMPT);
+	SEND_RESP(RESP_PROMPT);
 }
 
 TelnetSession::~TelnetSession ()
@@ -145,7 +174,17 @@ void TelnetSession::handleCommand (char *command, unsigned int size)
 
 void TelnetSession::onCommand (const std::vector<char *> &argv)
 {
-	if (std::strcmp(argv[0], "show") == 0)
+	if (std::strcmp(argv[0], "add") == 0)
+		onAddCommand(argv);
+	else if (std::strcmp(argv[0], "remove") == 0)
+		onRemoveCommand(argv);
+	else if (std::strcmp(argv[0], "set") == 0)
+		onSetCommand(argv);
+	else if (std::strcmp(argv[0], "enable") == 0)
+		onEnableCommand(argv);
+	else if (std::strcmp(argv[0], "disable") == 0)
+		onDisableCommand(argv);
+	else if (std::strcmp(argv[0], "show") == 0)
 		onShowCommand(argv);
 	else if (std::strcmp(argv[0], "exit") == 0)
 		delete this;
@@ -155,6 +194,63 @@ void TelnetSession::onCommand (const std::vector<char *> &argv)
 		SEND_RESP(RESP_INVALID_COMMAND);
 }
 
+void TelnetSession::onAddCommand (const std::vector<char *> &argv)
+{
+	if (argv.size() == 1)
+		SEND_RESP(RESP_ADD);
+	else if (std::strcmp(argv[1], "router") == 0)
+		onAddRouterCommand(argv);
+	else
+		SEND_RESP(RESP_ADD);
+}
+
+void TelnetSession::onAddRouterCommand (const std::vector<char *> &argv)
+{
+	if (argv.size() < 4)
+	{
+		SEND_RESP(RESP_ADD_ROUTER);
+		return;
+	}
+
+	int vrid = std::atoi(argv[3]);
+	if (vrid <= 0 || vrid > 255)
+	{
+		SEND_RESP(RESP_ADD_ROUTER);
+		return;
+	}
+
+	bool ipv6 = (argv.size() > 4 && std::strcmp(argv[4], "ipv6") == 0);
+	const char *interface = argv[2];
+
+	
+}
+
+void TelnetSession::onRemoveCommand (const std::vector<char *> &argv)
+{
+	// TODO
+}
+
+void TelnetSession::onSetCommand (const std::vector<char *> &argv)
+{
+	// TODO
+}
+
+void TelnetSession::onEnableCommand (const std::vector<char *> &argv)
+{
+	// TODO
+}
+
+void TelnetSession::onDisableCommand (const std::vector<char *> &argv)
+{
+	// TODO
+}
+
+void TelnetSession::onShowCommand (const std::vector<char *> &argv)
+{
+	// TODO
+}
+
+/*
 void TelnetSession::onShowCommand (const std::vector<char *> &argv)
 {
 	if (argv.size() == 1)
@@ -360,6 +456,7 @@ void TelnetSession::onShowRouterStatCommand (const std::vector<char *> &argv)
 		}
 	}
 }
+*/
 
 std::vector<char *> TelnetSession::splitCommand (char *command)
 {
