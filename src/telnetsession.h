@@ -43,6 +43,7 @@ class TelnetSession
 		void onShowStatCommand (const std::vector<char *> &argv);
 		void onShowRouterStatCommand (const std::vector<char *> &argv);
 		void showRouter (const VrrpService *service);
+		void showRouterStat (const VrrpService *service);
 
 		void sendFormatted (const char *templ, ...);
 

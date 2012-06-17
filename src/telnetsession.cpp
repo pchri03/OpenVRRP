@@ -183,7 +183,10 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 		interface = 0;
 	}
 	else if (std::strcmp(argv[2], "stat") == 0)
+	{
 		onShowRouterStatCommand(argv);
+		return;
+	}
 	else if (std::strcmp(argv[2], "interface") == 0)
 	{
 		if (argv.size() == 3)
@@ -198,8 +201,8 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 			vrid = 0;
 		else
 		{
-			vrid = std::atoi(argv[2]);
-			if (vrid == 0 || vrid > 255)
+			vrid = std::atoi(argv[4]);
+			if (vrid <= 0 || vrid > 255)
 			{
 				SEND_RESP(RESP_SHOW_ROUTER_INTERFACE);
 				return;
@@ -209,7 +212,7 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 	else
 	{
 		vrid = std::atoi(argv[2]);
-		if (vrid == 0 || vrid > 255)
+		if (vrid <= 0 || vrid > 255)
 		{
 			SEND_RESP(RESP_SHOW_ROUTER);
 			return;
@@ -268,6 +271,93 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 
 void TelnetSession::onShowRouterStatCommand (const std::vector<char *> &argv)
 {
+	int vrid;
+	int interface;
+	if (argv.size() == 3)
+	{
+		vrid = 0;
+		interface = 0;
+	}
+	else if (std::strcmp(argv[3], "interface") == 0)
+	{
+		if (argv.size() == 4)
+		{
+			SEND_RESP(RESP_SHOW_ROUTER_STAT_INTERFACE);
+			return;
+		}
+
+		interface = if_nametoindex(argv[4]);
+
+		if (argv.size() == 5)
+			vrid = 0;
+		else
+		{
+			vrid = std::atoi(argv[5]);
+			if (vrid <= 0 || vrid > 255)
+			{
+				SEND_RESP(RESP_SHOW_ROUTER_STAT_INTERFACE);
+				return;
+			}
+		}
+	}
+	else
+	{
+		vrid = std::atoi(argv[3]);
+		if (vrid <= 0 || vrid > 255)
+		{
+			SEND_RESP(RESP_SHOW_ROUTER_STAT);
+			return;
+		}
+	}
+
+	const VrrpManager::VrrpServiceMap &services = VrrpManager::services();
+	if (interface > 0)
+	{
+		VrrpManager::VrrpServiceMap::const_iterator interfaceServices = services.find(interface);
+		if (interfaceServices != services.end())
+		{
+			if (vrid == 0)
+			{
+				for (VrrpManager::VrrpServiceMap::mapped_type::const_iterator services = interfaceServices->second.begin(); services != interfaceServices->second.end(); ++services)
+				{
+					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
+						showRouterStat(service->second);
+				}
+			}
+			else
+			{
+				VrrpManager::VrrpServiceMap::mapped_type::const_iterator services = interfaceServices->second.find(vrid);
+				if (services != interfaceServices->second.end())
+				{
+					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
+						showRouterStat(service->second);
+				}
+			}
+		}
+	}
+	else
+	{
+		for (VrrpManager::VrrpServiceMap::const_iterator interfaceServices = services.begin(); interfaceServices != services.end(); ++interfaceServices)
+		{
+			if (vrid == 0)
+			{
+				for (VrrpManager::VrrpServiceMap::mapped_type::const_iterator services = interfaceServices->second.begin(); services != interfaceServices->second.end(); ++services)
+				{
+					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
+						showRouterStat(service->second);
+				}
+			}
+			else
+			{
+				VrrpManager::VrrpServiceMap::mapped_type::const_iterator services = interfaceServices->second.find(vrid);
+				if (services != interfaceServices->second.end())
+				{
+					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
+						showRouterStat(service->second);
+				}
+			}
+		}
+	}
 }
 
 std::vector<char *> TelnetSession::splitCommand (char *command)
@@ -329,5 +419,29 @@ void TelnetSession::showRouter (const VrrpService *service)
 	for (IpAddressList::const_iterator addr = list.begin(); addr != list.end(); ++addr)
 		sendFormatted("  %s\n", addr->toString().c_str());
 
+	SEND_RESP("\n");
+}
+
+void TelnetSession::showRouterStat (const VrrpService *service)
+{
+	char tmp[IFNAMSIZ];
+	sendFormatted("Virtual router %hhu on interface %s (%s)\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6");
+	sendFormatted(" Master Transitions:                    %u\n", service->statsMasterTransitions());
+
+	static const char *reasons[] = {"Not master", "Priority", "Preempted", "Master not responding"};
+	sendFormatted(" Master Reason:                         %s\n", reasons[service->statsNewMasterReason() - 1]);
+
+	sendFormatted(" Received Advertisements:               %llu\n", (unsigned long long int)service->statsRcvdAdvertisements());
+	sendFormatted(" Advertisement Interval Errors:         %llu\n", (unsigned long long int)service->statsAdvIntervalErrors());
+	sendFormatted(" IP TTL Errors:                         %llu\n", (unsigned long long int)service->statsIpTtlErrors());
+
+	static const char *errors[] = {"No error", "IP TTL error", "Version error", "Checksum error", "Virtual router ID error"};
+	sendFormatted(" Protocol Error:                        %s\n", errors[service->statsProtocolErrReason()]);
+
+	sendFormatted(" Priority Zero Advertisements Received: %llu\n", (unsigned long long int)service->statsRcvdPriZeroPackets());
+	sendFormatted(" Priority Zero Advertisements Sent:     %llu\n", (unsigned long long int)service->statsSentPriZeroPackets());
+	sendFormatted(" Invalid Packet Types Received:         %llu\n", (unsigned long long int)service->statsRcvdInvalidTypePackets());
+	sendFormatted(" Address List Errors:                   %llu\n", (unsigned long long int)service->statsAddressListErrors());
+	sendFormatted(" Packet Length Errors:                  %llu\n", (unsigned long long int)service->statsPacketLengthErrors());
 	SEND_RESP("\n");
 }
