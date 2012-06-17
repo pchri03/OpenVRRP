@@ -168,6 +168,61 @@ class VrrpService : private VrrpEventListener
 			return m_error;
 		}
 
+		inline std::uint_fast32_t statsMasterTransitions () const
+		{
+			return m_statsMasterTransitions;
+		}
+
+		inline NewMasterReason statsNewMasterReason () const
+		{
+			return m_statsNewMasterReason;
+		}
+
+		inline std::uint_fast64_t statsRcvdAdvertisements () const
+		{
+			return m_statsRcvdAdvertisements;
+		}
+
+		inline std::uint_fast64_t statsAdvIntervalErrors () const
+		{
+			return m_statsAdvIntervalErrors;
+		}
+
+		inline std::uint_fast64_t statsIpTtlErrors () const
+		{
+			return m_statsIpTtlErrors;
+		}
+
+		inline ProtocolErrorReason statsProtocolErrReason () const
+		{
+			return m_statsProtocolErrReason;
+		}
+
+		inline std::uint_fast64_t statsRcvdPriZeroPackets () const
+		{
+			return m_statsRcvdPriZeroPackets;
+		}
+
+		inline std::uint_fast64_t statsSentPriZeroPackets() const
+		{
+			return m_statsSentPriZeroPackets;
+		}
+
+		inline std::uint_fast64_t statsRcvdInvalidTypePackets () const
+		{
+			return m_statsRcvdInvalidTypePackets;
+		}
+
+		inline std::uint_fast64_t statsAddressListErrors () const
+		{
+			return m_statsAddressListErrors;
+		}
+
+		inline std::uint_fast64_t statsPacketLengthErrors () const
+		{
+			return m_statsPacketLengthErrors;
+		}
+
 	private:
 		virtual void onIncomingVrrpPacket (
 				unsigned int interface,
