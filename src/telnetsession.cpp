@@ -32,6 +32,9 @@
 #include <net/if.h>
 
 #define RESP_INVALID_COMMAND	"Invalid command\n"
+#define RESP_NO_SUCH_INTERFACE	"No such interface\n"
+#define RESP_INVALID_ROUTER_ID	"Invalid router id\n"
+#define RESP_ERROR_CREATING_ROUTER	"Error creating router\n"
 #define RESP_NO_SUCH_ROUTER		"No such router\n"
 
 #define RESP_ADD_ROUTER				"add router INTF VRID [ipv6]\n"
@@ -49,15 +52,11 @@
 #define RESP_SHOW_ROUTER			"show router [INTF] [VRID] [ipv6] [stats]\n"
 #define RESP_SHOW_STATS				"show stats\n"
 
-#define RESP_ADD_ROUTER				RESP_ADD_ROUTER \
+#define RESP_ADD					RESP_ADD_ROUTER \
 									RESP_ADD_ROUTER_ADDRESS
 
-#define RESP_ADD					RESP_ADD_ROUTER
-
-#define RESP_REMOVE_ROUTER			RESP_REMOVE_ROUTER \
+#define RESP_REMOVE					RESP_REMOVE_ROUTER \
 									RESP_REMOVE_ROUTER_ADDRESS
-
-#define RESP_REMOVE					RESP_REMOVE_ROUTER
 
 #define RESP_SET_ROUTER				RESP_SET_ROUTER_PRIMARY \
 									RESP_SET_ROUTER_PRIORITY \
@@ -206,28 +205,118 @@ void TelnetSession::onAddCommand (const std::vector<char *> &argv)
 
 void TelnetSession::onAddRouterCommand (const std::vector<char *> &argv)
 {
-	if (argv.size() < 4)
-	{
-		SEND_RESP(RESP_ADD_ROUTER);
-		return;
-	}
-
-	int vrid = std::atoi(argv[3]);
-	if (vrid <= 0 || vrid > 255)
-	{
-		SEND_RESP(RESP_ADD_ROUTER);
-		return;
-	}
-
 	bool ipv6 = (argv.size() > 4 && std::strcmp(argv[4], "ipv6") == 0);
-	const char *interface = argv[2];
 
-	
+	if (ipv6)
+	{
+		if (argv.size() == 5)
+		{
+			// add router INTF VRID ipv6
+			getService(argv, true);
+		}
+		else if (argv.size() == 7 && std::strcmp(argv[5], "address") == 0)
+		{
+			// add router INTF VRID ipv6 address IP
+
+			IpAddress addr(argv[6]);
+			if (addr.family() != AF_INET6)
+			{
+				SEND_RESP(RESP_ADD_ROUTER_ADDRESS);
+				return;
+			}			
+
+			VrrpService *service = getService(argv);
+			if (service != 0)
+				service->addIpAddress(addr);
+		}
+		else
+			SEND_RESP(RESP_ADD);
+	}
+	else
+	{
+		if (argv.size() == 4)
+		{
+			// add router INTF VRID
+			getService(argv, true);
+		}
+		else if (argv.size() == 6 && std::strcmp(argv[4], "address") == 0)
+		{
+			// add router INTF VRID address IP
+
+			IpAddress addr(argv[5]);
+			if (addr.family() != AF_INET)
+			{
+				SEND_RESP(RESP_ADD_ROUTER_ADDRESS);
+				return;
+			}
+
+			VrrpService *service = getService(argv);
+			if (service != 0)
+				service->addIpAddress(addr);
+		}
+		else
+			SEND_RESP(RESP_ADD);
+	}
 }
 
 void TelnetSession::onRemoveCommand (const std::vector<char *> &argv)
 {
-	// TODO
+	bool ipv6 = (argv.size() > 4 && std::strcmp(argv[4], "ipv6") == 0);
+
+	if (ipv6)
+	{
+		if (argv.size() == 5)
+		{
+			// remove router INTF VRID ipv6
+			VrrpService *service = getService(argv);
+			if (service != 0)
+				VrrpManager::removeService(service);
+		}
+		else if (argv.size() == 7 && std::strcmp(argv[5], "address") == 0)
+		{
+			// remove router INTF VRID ipv6 address IP
+
+			IpAddress addr(argv[6]);
+			if (addr.family() != AF_INET6)
+			{
+				SEND_RESP(RESP_REMOVE_ROUTER_ADDRESS);
+				return;
+			}			
+
+			VrrpService *service = getService(argv);
+			if (service != 0)
+				service->removeIpAddress(addr);
+		}
+		else
+			SEND_RESP(RESP_REMOVE);
+	}
+	else
+	{
+		if (argv.size() == 4)
+		{
+			// remove router INTF VRID
+			VrrpService *service = getService(argv);
+			if (service != 0)
+				VrrpManager::removeService(service);
+		}
+		else if (argv.size() == 6 && std::strcmp(argv[4], "address") == 0)
+		{
+			// remove router INTF VRID address IP
+
+			IpAddress addr(argv[5]);
+			if (addr.family() != AF_INET)
+			{
+				SEND_RESP(RESP_REMOVE_ROUTER_ADDRESS);
+				return;
+			}
+
+			VrrpService *service = getService(argv);
+			if (service != 0)
+				service->removeIpAddress(addr);
+		}
+		else
+			SEND_RESP(RESP_REMOVE);
+	}
 }
 
 void TelnetSession::onSetCommand (const std::vector<char *> &argv)
@@ -237,84 +326,87 @@ void TelnetSession::onSetCommand (const std::vector<char *> &argv)
 
 void TelnetSession::onEnableCommand (const std::vector<char *> &argv)
 {
-	// TODO
+	VrrpService *service = getService(argv);
+	if (service != 0)
+		service->enable();
 }
 
 void TelnetSession::onDisableCommand (const std::vector<char *> &argv)
 {
-	// TODO
+	VrrpService *service = getService(argv);
+	if (service != 0)
+		service->disable();
 }
 
 void TelnetSession::onShowCommand (const std::vector<char *> &argv)
 {
-	// TODO
-}
+	if (argv.size() > 1)
+	{
+		if (std::strcmp(argv[1], "router") == 0)
+		{
+			onShowRouterCommand(argv);
+			return;
+		}
+		else if (std::strcmp(argv[1], "stats") == 0)
+		{
+			onShowStatsCommand(argv);
+			return;
+		}
+	}
 
-/*
-void TelnetSession::onShowCommand (const std::vector<char *> &argv)
-{
-	if (argv.size() == 1)
-		SEND_RESP(RESP_SHOW);
-	else if (std::strcmp(argv[1], "router") == 0)
-		onShowRouterCommand(argv);
-	else if (std::strcmp(argv[1], "stat") == 0)
-		onShowStatCommand(argv);
-	else
-		SEND_RESP(RESP_INVALID_COMMAND);
-}
-
-void TelnetSession::onShowStatCommand (const std::vector<char *> &)
-{
-	sendFormatted("Router Checksum Errors:         %llu\n", (unsigned long long int)VrrpSocket::routerChecksumErrors());
-	sendFormatted("Router Version Errors:          %llu\n", (unsigned long long int)VrrpSocket::routerVersionErrors());
-	sendFormatted("Router Virtual Router Id Error: %llu\n", (unsigned long long int)VrrpSocket::routerVrIdErrors());
+	SEND_RESP(RESP_SHOW);
 }
 
 void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 {
-	int vrid;
-	int interface;
-	if (argv.size() == 2)
+	int interface = -1;
+	int vrid = -1;
+	int family = AF_INET;
+	bool stats = false;
+
+	for (int i = 2; i != argv.size(); ++i)
 	{
-		vrid = 0;
-		interface = 0;
-	}
-	else if (std::strcmp(argv[2], "stat") == 0)
-	{
-		onShowRouterStatCommand(argv);
-		return;
-	}
-	else if (std::strcmp(argv[2], "interface") == 0)
-	{
-		if (argv.size() == 3)
+		if (std::strcmp(argv[i], "stats") == 0)
 		{
-			SEND_RESP(RESP_SHOW_ROUTER_INTERFACE);
-			return;
+			stats = true;
+			break;
 		}
-
-		interface = if_nametoindex(argv[3]);
-
-		if (argv.size() == 4)
-			vrid = 0;
-		else
+		else if (family == AF_UNSPEC && std::strcmp(argv[i], "ipv6") == 0)
 		{
-			vrid = std::atoi(argv[4]);
+			if (interface == -1)
+				interface = 0;
+			if (vrid == -1)
+				vrid = 0;
+
+			family = AF_INET6;
+		}
+		else if (vrid == -1 && std::isdigit(argv[i][0]))
+		{
+			if (interface == -1)
+				interface = 0;
+
+			vrid = std::atoi(argv[i]);
 			if (vrid <= 0 || vrid > 255)
 			{
-				SEND_RESP(RESP_SHOW_ROUTER_INTERFACE);
+				SEND_RESP(RESP_INVALID_ROUTER_ID);
+				return;
+			}
+		}
+		else if (interface == -1)
+		{
+			interface = if_nametoindex(argv[i]);
+			if (interface <= 0)
+			{
+				SEND_RESP(RESP_NO_SUCH_INTERFACE);
 				return;
 			}
 		}
 	}
-	else
-	{
-		vrid = std::atoi(argv[2]);
-		if (vrid <= 0 || vrid > 255)
-		{
-			SEND_RESP(RESP_SHOW_ROUTER);
-			return;
-		}
-	}
+
+	if (interface == -1)
+		interface = 0;
+	if (vrid == -1)
+		vrid = 0;
 
 	const VrrpManager::VrrpServiceMap &services = VrrpManager::services();
 	if (interface > 0)
@@ -327,7 +419,12 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 				for (VrrpManager::VrrpServiceMap::mapped_type::const_iterator services = interfaceServices->second.begin(); services != interfaceServices->second.end(); ++services)
 				{
 					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
-						showRouter(service->second);
+					{
+						if (stats)
+							showRouterStats(service->second);
+						else
+							showRouter(service->second);
+					}
 				}
 			}
 			else
@@ -336,7 +433,12 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 				if (services != interfaceServices->second.end())
 				{
 					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
-						showRouter(service->second);
+					{
+						if (stats)
+							showRouterStats(service->second);
+						else
+							showRouter(service->second);
+					}
 				}
 			}
 		}
@@ -350,7 +452,12 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 				for (VrrpManager::VrrpServiceMap::mapped_type::const_iterator services = interfaceServices->second.begin(); services != interfaceServices->second.end(); ++services)
 				{
 					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
-						showRouter(service->second);
+					{
+						if (stats)
+							showRouterStats(service->second);
+						else
+							showRouter(service->second);
+					}
 				}
 			}
 			else
@@ -359,104 +466,53 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 				if (services != interfaceServices->second.end())
 				{
 					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
-						showRouter(service->second);
+					{
+						if (stats)
+							showRouterStats(service->second);
+						else
+							showRouter(service->second);
+					}
 				}
 			}
 		}
 	}
 }
 
-void TelnetSession::onShowRouterStatCommand (const std::vector<char *> &argv)
+void TelnetSession::onShowStatsCommand (const std::vector<char *> &argv)
 {
-	int vrid;
-	int interface;
-	if (argv.size() == 3)
-	{
-		vrid = 0;
-		interface = 0;
-	}
-	else if (std::strcmp(argv[3], "interface") == 0)
-	{
-		if (argv.size() == 4)
-		{
-			SEND_RESP(RESP_SHOW_ROUTER_STAT_INTERFACE);
-			return;
-		}
-
-		interface = if_nametoindex(argv[4]);
-
-		if (argv.size() == 5)
-			vrid = 0;
-		else
-		{
-			vrid = std::atoi(argv[5]);
-			if (vrid <= 0 || vrid > 255)
-			{
-				SEND_RESP(RESP_SHOW_ROUTER_STAT_INTERFACE);
-				return;
-			}
-		}
-	}
-	else
-	{
-		vrid = std::atoi(argv[3]);
-		if (vrid <= 0 || vrid > 255)
-		{
-			SEND_RESP(RESP_SHOW_ROUTER_STAT);
-			return;
-		}
-	}
-
-	const VrrpManager::VrrpServiceMap &services = VrrpManager::services();
-	if (interface > 0)
-	{
-		VrrpManager::VrrpServiceMap::const_iterator interfaceServices = services.find(interface);
-		if (interfaceServices != services.end())
-		{
-			if (vrid == 0)
-			{
-				for (VrrpManager::VrrpServiceMap::mapped_type::const_iterator services = interfaceServices->second.begin(); services != interfaceServices->second.end(); ++services)
-				{
-					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
-						showRouterStat(service->second);
-				}
-			}
-			else
-			{
-				VrrpManager::VrrpServiceMap::mapped_type::const_iterator services = interfaceServices->second.find(vrid);
-				if (services != interfaceServices->second.end())
-				{
-					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
-						showRouterStat(service->second);
-				}
-			}
-		}
-	}
-	else
-	{
-		for (VrrpManager::VrrpServiceMap::const_iterator interfaceServices = services.begin(); interfaceServices != services.end(); ++interfaceServices)
-		{
-			if (vrid == 0)
-			{
-				for (VrrpManager::VrrpServiceMap::mapped_type::const_iterator services = interfaceServices->second.begin(); services != interfaceServices->second.end(); ++services)
-				{
-					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
-						showRouterStat(service->second);
-				}
-			}
-			else
-			{
-				VrrpManager::VrrpServiceMap::mapped_type::const_iterator services = interfaceServices->second.find(vrid);
-				if (services != interfaceServices->second.end())
-				{
-					for (VrrpManager::VrrpServiceMap::mapped_type::mapped_type::const_iterator service = services->second.begin(); service != services->second.end(); ++service)
-						showRouterStat(service->second);
-				}
-			}
-		}
-	}
+	// TODO
 }
-*/
+
+VrrpService *TelnetSession::getService (const std::vector<char *> &argv, bool create)
+{
+	// xxx xxx INTF VRID [ipv6]
+	int interface = if_nametoindex(argv[2]);
+	if (interface <= 0)
+	{
+		SEND_RESP(RESP_NO_SUCH_INTERFACE);
+		return 0;
+	}
+
+	int vrid = std::atoi(argv[3]);
+	if (vrid <= 0 || vrid > 255)
+	{
+		SEND_RESP(RESP_INVALID_ROUTER_ID);
+		return 0;
+	}
+
+	int family = (argv.size() > 4 && std::strcmp(argv[4], "ipv6") == 0 ? AF_INET6 : AF_INET);
+
+	VrrpService *service = VrrpManager::getService(interface, vrid, family, create);
+	if (service == 0)
+	{
+		if (create)
+			SEND_RESP(RESP_ERROR_CREATING_ROUTER);
+		else
+			SEND_RESP(RESP_NO_SUCH_ROUTER);
+	}
+	return service;
+}
+
 
 std::vector<char *> TelnetSession::splitCommand (char *command)
 {
@@ -499,7 +555,7 @@ void TelnetSession::sendFormatted (const char *templ, ...)
 void TelnetSession::showRouter (const VrrpService *service)
 {
 	char tmp[IFNAMSIZ];
-	sendFormatted("Virtual router %hhu on interface %s (%s)\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6");
+	sendFormatted("Virtual router %hhu on interface %s (%s)%s\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6", service->enabled() ? "" : " [DISABLED]");
 	sendFormatted(" Master IP Address:      %s\n", service->masterIpAddress().toString().c_str());
 	sendFormatted(" Primary IP Address:     %s\n", service->primaryIpAddress().toString().c_str());
 	sendFormatted(" Virtual MAC:            00:00:5e:00:%02u:%02hhu\n", service->family() == AF_INET ? 1 : 2, (unsigned char)service->virtualRouterId());
@@ -520,10 +576,10 @@ void TelnetSession::showRouter (const VrrpService *service)
 	SEND_RESP("\n");
 }
 
-void TelnetSession::showRouterStat (const VrrpService *service)
+void TelnetSession::showRouterStats (const VrrpService *service)
 {
 	char tmp[IFNAMSIZ];
-	sendFormatted("Virtual router %hhu on interface %s (%s)\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6");
+	sendFormatted("Virtual router %hhu on interface %s (%s)%s\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6", service->enabled() ? "" : " [DISABLE]");
 	sendFormatted(" Master Transitions:                    %u\n", service->statsMasterTransitions());
 
 	static const char *reasons[] = {"Not master", "Priority", "Preempted", "Master not responding"};

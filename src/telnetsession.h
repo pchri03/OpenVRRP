@@ -52,13 +52,13 @@ class TelnetSession
 		void onShowStatsCommand (const std::vector<char *> &argv);
 		
 		void showRouter (const VrrpService *service);
-		void showRouterStat (const VrrpService *service);
+		void showRouterStats (const VrrpService *service);
 
 		void sendFormatted (const char *templ, ...);
 
 		static std::vector<char *> splitCommand (char *command);
 
-		static VrrpService *getService (const std::vector<char *> &argv);
+		VrrpService *getService (const std::vector<char *> &argv, bool create = false);
 
 	private:
 		int m_socket;

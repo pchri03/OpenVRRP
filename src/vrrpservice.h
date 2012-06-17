@@ -160,8 +160,8 @@ class VrrpService : private VrrpEventListener
 			return m_state;
 		}
 
-		void startup ();
-		void shutdown ();
+		void enable ();
+		void disable ();
 
 		inline int error () const
 		{
@@ -223,6 +223,11 @@ class VrrpService : private VrrpEventListener
 			return m_statsPacketLengthErrors;
 		}
 
+		inline bool enabled () const
+		{
+			return m_enabled;
+		}
+
 	private:
 		virtual void onIncomingVrrpPacket (
 				unsigned int interface,
@@ -233,6 +238,9 @@ class VrrpService : private VrrpEventListener
 				const IpAddressList &addresses);
 
 		virtual void onIncomingVrrpError (unsigned int interface, std::uint_fast8_t virtualRouterId, VrrpEventListener::Error error);
+
+		void startup ();
+		void shutdown ();
 
 		void onMasterDownTimer ();
 		void onAdvertisementTimer ();
@@ -294,6 +302,7 @@ class VrrpService : private VrrpEventListener
 		NewMasterReason m_pendingNewMasterReason;
 
 		bool m_autoSync;
+		bool m_enabled;
 };
 
 #endif // INCLUDE_OPENVRRP_VRRPSERVICE_H

@@ -59,7 +59,8 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 
 	m_pendingNewMasterReason(MasterNotResponding),
 
-	m_autoSync(false)
+	m_autoSync(false),
+	m_enabled(false)
 {
 	if (m_family == AF_INET)
 		m_name = "VRRP IPv4 Service";
@@ -107,6 +108,24 @@ void VrrpService::timerCallback (Timer *timer, void *userData)
 		self->onAdvertisementTimer();
 }
 
+void VrrpService::enable ()
+{
+	if (!m_enabled)
+	{
+		m_enabled = true;
+		startup();
+	}
+}
+
+void VrrpService::disable ()
+{
+	if (m_enabled)
+	{
+		shutdown();
+		m_enabled = false;
+	}
+}
+
 void VrrpService::startup ()
 {
 	if (m_priority == 255)
@@ -152,7 +171,6 @@ void VrrpService::shutdown ()
 		
 		++m_statsSentPriZeroPackets;
 	}
-
 }
 
 void VrrpService::onMasterDownTimer ()

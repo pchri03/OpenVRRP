@@ -19,8 +19,6 @@
 #ifndef INCLUDE_OPENVRRP_VRRPMANAGER_H
 #define INCLUDE_OPENVRRP_VRRPMANAGER_H
 
-#include "configuration.h"
-
 #include <map>
 #include <cstdint>
 
@@ -39,8 +37,6 @@ class VrrpManager
 		static VrrpService *getService (int interface, std::uint_least8_t virtualRouterId, int family, bool createIfMissing = false);
 		static void removeService (int interface, std::uint_least8_t virtualRouterId, int family);
 		static void removeService (VrrpService *service);
-
-		static bool setup (const Configuration &config);
 
 		static void cleanup ();
 

@@ -65,25 +65,14 @@ void VrrpManager::cleanup ()
 
 }
 
-bool VrrpManager::setup (const Configuration &config)
+void VrrpManager::removeService (VrrpService *service)
 {
-	VrrpService *service = getService(config.interface(), config.virtualRouterId(), config.family(), true);
-	if (service == 0)
-		return false;
-
-	if (config.primaryIpAddress().family() != 0)
-		service->setPrimaryIpAddress(config.primaryIpAddress());
-	service->setPriority(config.priority());
-	service->setAdvertisementInterval(config.advertisementInterval());
-	service->setPreemptMode(config.preemptionMode());
-	service->setAcceptMode(config.acceptMode());
-
-	IpAddressList addresses = config.addresses();
-	for (IpAddressList::const_iterator address = addresses.begin(); address != addresses.end(); ++address)
-		service->addIpAddress(*address);
-
-	service->startup();
-
-	return true;
+	VrrpServiceMap::iterator interfaceServices = m_services.find(service->interface());
+	if (interfaceServices != m_services.end())
+	{
+		VrrpServiceMap::mapped_type::iterator it = interfaceServices->second.find(service->virtualRouterId());
+		interfaceServices->second.erase(it);
+	
+		delete service;
+	}
 }
-
