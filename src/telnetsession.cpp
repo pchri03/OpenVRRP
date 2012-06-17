@@ -320,7 +320,7 @@ void TelnetSession::showRouter (const VrrpService *service)
 	sendFormatted(" Status:                 %s\n", states[service->state() - 1]);
 
 	sendFormatted(" Priority:               %u\n", (unsigned int)service->priority());
-	sendFormatted(" Advertisement Interval: %u0 msec\n", service->advertisementInterval());
+	sendFormatted(" Advertisement Interval: %u msec\n", (unsigned int)service->advertisementInterval() * 10);
 	sendFormatted(" Preempt Mode:           %s\n", service->preemptMode() ? "Yes" : "No");
 	sendFormatted(" Accept Mode:            %s\n", service->acceptMode() ? "Yes" : "No");
 	SEND_RESP(" Address List:\n");
