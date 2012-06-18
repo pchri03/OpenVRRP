@@ -145,7 +145,13 @@ void TelnetSession::receiveChunk ()
 				SEND_RESP(RESP_INVALID_COMMAND);
 			}
 			else
-				handleCommand(m_buffer, lineSize);
+			{
+				if (!handleCommand(m_buffer, lineSize))
+				{
+					delete this;
+					break;
+				}
+			}
 
 			if (lineSize + 1 < m_bufferSize)
 			{
@@ -161,7 +167,7 @@ void TelnetSession::receiveChunk ()
 	}
 }
 
-void TelnetSession::handleCommand (char *command, unsigned int size)
+bool TelnetSession::handleCommand (char *command, unsigned int size)
 {
 	while (size > 0 && std::isspace(command[size - 1]))
 		--size;
@@ -170,11 +176,16 @@ void TelnetSession::handleCommand (char *command, unsigned int size)
 	std::vector<char *> args = splitCommand(command);
 
 	if (args.size() > 0)
-		onCommand(args);
+	{
+		if (!onCommand(args))
+			return false;
+	}
+
 	SEND_RESP(RESP_PROMPT);
+	return true;
 }
 
-void TelnetSession::onCommand (const std::vector<char *> &argv)
+bool TelnetSession::onCommand (const std::vector<char *> &argv)
 {
 	if (std::strcmp(argv[0], "add") == 0)
 		onAddCommand(argv);
@@ -189,11 +200,13 @@ void TelnetSession::onCommand (const std::vector<char *> &argv)
 	else if (std::strcmp(argv[0], "show") == 0)
 		onShowCommand(argv);
 	else if (std::strcmp(argv[0], "exit") == 0)
-		delete this;
+		return false;
 	else if (std::strcmp(argv[0], "help") == 0)
 		SEND_RESP(RESP_HELP);
 	else
 		SEND_RESP(RESP_INVALID_COMMAND);
+
+	return true;
 }
 
 void TelnetSession::onAddCommand (const std::vector<char *> &argv)

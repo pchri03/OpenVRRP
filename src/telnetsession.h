@@ -36,8 +36,8 @@ class TelnetSession
 	private:
 		static void onIncomingData (int fd, void *userData);
 		void receiveChunk ();
-		void handleCommand (char *command, unsigned int size);
-		void onCommand (const std::vector<char *> &argv);
+		bool handleCommand (char *command, unsigned int size);
+		bool onCommand (const std::vector<char *> &argv);
 
 		void onAddCommand (const std::vector<char *> &argv);
 		void onAddRouterCommand (const std::vector<char *> &argv);
