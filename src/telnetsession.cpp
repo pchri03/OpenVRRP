@@ -36,6 +36,9 @@
 #define RESP_INVALID_ROUTER_ID	"Invalid router id\n"
 #define RESP_ERROR_CREATING_ROUTER	"Error creating router\n"
 #define RESP_NO_SUCH_ROUTER		"No such router\n"
+#define RESP_INVALID_IP			"Invalid ip address\n"
+#define RESP_INVALID_PRIORITY	"Invalid priority\n"
+#define RESP_INVALID_INTERVAL	"Invalid interval\n"
 
 #define RESP_ADD_ROUTER				"add router INTF VRID [ipv6]\n"
 #define RESP_ADD_ROUTER_ADDRESS		"add router INTF VRID [ipv6] address IP\n"
@@ -321,7 +324,141 @@ void TelnetSession::onRemoveCommand (const std::vector<char *> &argv)
 
 void TelnetSession::onSetCommand (const std::vector<char *> &argv)
 {
-	// TODO
+	if (argv.size() > 1 && std::strcmp(argv[1], "router") == 0)
+	{
+		onSetRouterCommand(argv);
+		return;
+	}
+
+	SEND_RESP(RESP_SET);
+}
+
+void TelnetSession::onSetRouterCommand (const std::vector<char *> &argv)
+{
+	static const char *trueValues[] = {"true", "on", "1", "enabled"};
+	static const char *falseValues[] = {"false", "off", "0", "disabled"};
+
+	VrrpService *service = getService(argv);
+	if (service != 0)
+	{
+		int offset = (service->family() == AF_INET6 ? 5 : 4);
+		if (argv.size() > offset)
+		{
+			if (std::strcmp(argv[offset], "primary") == 0)
+			{
+				if (argv.size() > offset + 1)
+				{
+					IpAddress address(argv[offset + 1]);
+					if (address.family() != service->family())
+					{
+						SEND_RESP(RESP_INVALID_IP);
+						return;
+					}
+
+					service->setPrimaryIpAddress(address);
+					return;
+				}
+				
+				SEND_RESP(RESP_SET_ROUTER_PRIMARY);
+				return;
+			}
+			else if (std::strcmp(argv[offset], "priority") == 0)
+			{
+				if (argv.size() > offset + 1)
+				{
+					int priority = std::atoi(argv[offset + 1]);
+					if (priority < 1 || priority > 255)
+					{
+						SEND_RESP(RESP_INVALID_PRIORITY);
+						return;
+					}
+
+					service->setPriority(priority);
+					return;
+				}
+
+				SEND_RESP(RESP_SET_ROUTER_PRIORITY);
+				return;
+			}
+			else if (std::strcmp(argv[offset], "interval") == 0)
+			{
+				if (argv.size() > offset + 1)
+				{
+					int interval = std::atoi(argv[offset + 1]);
+					if (interval == 0 || interval % 10 != 0 || interval > 40950)
+					{
+						SEND_RESP(RESP_INVALID_INTERVAL);
+						return;
+					}
+
+					service->setAdvertisementInterval(interval / 10);
+					return;
+				}
+
+				SEND_RESP(RESP_SET_ROUTER_INTERVAL);
+				return;
+			}
+			else if (std::strcmp(argv[offset], "accept") == 0)
+			{
+				if (argv.size() > offset + 1)
+				{
+					for (int i = 0; i != sizeof(trueValues) / sizeof(trueValues[0]); ++i)
+					{
+						if (std::strcmp(argv[offset + 1], trueValues[i]) == 0)
+						{
+							service->setAcceptMode(true);
+							return;
+						}
+					}
+
+					for (int i = 0; i != sizeof(falseValues) / sizeof(falseValues[0]); ++i)
+					{
+						if (std::strcmp(argv[offset + 1], falseValues[i]) == 0)
+						{
+							service->setAcceptMode(false);
+							return;
+						}
+					}
+				}
+
+				SEND_RESP(RESP_SET_ROUTER_ACCEPT);
+				return;
+			}
+			else if (std::strcmp(argv[offset], "preempt") == 0)
+			{
+				if (argv.size() > offset + 1)
+				{
+					for (int i = 0; i != sizeof(trueValues) / sizeof(trueValues[0]); ++i)
+					{
+						if (std::strcmp(argv[offset + 1], trueValues[i]) == 0)
+						{
+							service->setPreemptMode(true);
+							return;
+						}
+					}
+
+					for (int i = 0; i != sizeof(falseValues) / sizeof(falseValues[0]); ++i)
+					{
+						if (std::strcmp(argv[offset + 1], falseValues[i]) == 0)
+						{
+							service->setPreemptMode(false);
+							return;
+						}
+					}
+				}
+
+				SEND_RESP(RESP_SET_ROUTER_PREEMPT);
+				return;
+
+			}
+			else if (std::strcmp(argv[offset], "status") == 0)
+			{
+				// TODO
+			}	
+		}
+			
+		SEND_RESP(RESP_SET);
+	}
 }
 
 void TelnetSession::onEnableCommand (const std::vector<char *> &argv)
