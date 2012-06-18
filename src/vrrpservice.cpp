@@ -370,7 +370,10 @@ void VrrpService::joinSolicitedNodeMulticast ()
 bool VrrpService::setVirtualMac ()
 {
 	if (m_outputInterface == m_interface)
-		return Netlink::setMac(m_outputInterface, m_mac);
+	{
+		// Never mess with the "true" interface
+		return true;
+	}
 	else
 		return Netlink::toggleInterface(m_outputInterface, true);
 }
@@ -379,28 +382,7 @@ bool VrrpService::setDefaultMac ()
 {
 	if (m_outputInterface == m_interface)
 	{
-		/*
-		struct
-		{
-			std::uint32_t cmd;
-			std::uint32_t size;
-			std::uint8_t mac[6];
-		} packet;
-		packet.cmd = ETHTOOL_GPERMADDR;
-		packet.size = 6;
-		
-		struct ifreq req;
-		if_indextoname(m_interface, req.ifr_ifrn.ifrn_name);
-		req.ifr_ifru.ifru_data = reinterpret_cast<__caddr_t>(&packet);
-
-		if (ioctl(m_socket, SIOCETHTOOL, &req) == -1)
-		{
-			syslog(LOG_ERR, "Error getting permanent hardware address: %m");
-			return false;
-		}
-
-		return Netlink::setMac(m_outputInterface, packet.mac);
-		*/
+		// Never mess with the "true" interface
 		return true;
 	}
 	else
