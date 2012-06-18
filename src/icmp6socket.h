@@ -16,17 +16,15 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef INCLUDE_OPENVRRP_UTIL_H
-#define INCLUDE_OPENVRRP_UTIL_H
+#ifndef INCLUDE_OPENVRRP_ICMP6SOCKET_H
+#define INCLUDE_OPENVRRP_ICMP6SOCKET_H
 
-#include <cstdint>
+#include "ipaddress.h"
 
-class IpAddress;
-
-class Util
+class Icmp6Socket
 {
 	public:
-		static std::uint16_t checksum (const void *packet, unsigned int size, const IpAddress &srcAddr, const IpAddress &dstAddr, int family);
+		static bool sendNeighborAdvertisement (unsigned int interface, const IpAddress &address);
 };
 
-#endif // INCLUDE_OPENVRRP_UTIL_H
+#endif // INCLUDE_OPENVRRP_ICMP6SOCKET_H

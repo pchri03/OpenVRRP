@@ -331,7 +331,7 @@ bool VrrpSocket::onSocketPacket ()
 	// Verify VRRP checksum
 	if (dstAddress.family() == AF_UNSPEC)
 		syslog(LOG_WARNING, "%s: Unable to get destination address. Checksum will not be verified", m_name);
-	else if (Util::checksum(packet, size, srcAddress, dstAddress) != 0)
+	else if (Util::checksum(packet, size, srcAddress, dstAddress, 112) != 0)
 	{
 		syslog(LOG_NOTICE, "%s: Discarded VRRP packet with invalid checksum", m_name);
 
@@ -478,7 +478,7 @@ bool VrrpSocket::sendPacket (
 
 	// Calculate checksum
 	unsigned int packetSize = 8 + addresses.size() * addressSize;
-	*reinterpret_cast<std::uint16_t *>(m_buffer + 6) = Util::checksum(m_buffer, packetSize, address, m_multicastAddress);
+	*reinterpret_cast<std::uint16_t *>(m_buffer + 6) = Util::checksum(m_buffer, packetSize, address, m_multicastAddress, 112);
 
 	// Fill control structure
 	unsigned int controlSize;

@@ -109,5 +109,7 @@ bool ArpSocket::sendGratuitiousArp (unsigned int interface, const IpAddress &add
 	else
 		ret = true;
 
+	close(s);
+
 	return ret;
 }

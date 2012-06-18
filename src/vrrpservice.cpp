@@ -17,6 +17,7 @@
  */
 
 #include "arpsocket.h"
+#include "icmp6socket.h"
 #include "netlink.h"
 #include "vrrpservice.h"
 #include "vrrpsocket.h"
@@ -359,7 +360,8 @@ void VrrpService::sendARPs ()
 
 void VrrpService::sendNeighborAdvertisements ()
 {
-	// TODO
+	for (IpAddressList::const_iterator address = m_addresses.begin(); address != m_addresses.end(); ++address)
+		Icmp6Socket::sendNeighborAdvertisement(m_outputInterface, *address);
 }
 
 void VrrpService::joinSolicitedNodeMulticast ()

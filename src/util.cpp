@@ -23,7 +23,7 @@
 
 #include <arpa/inet.h>
 
-std::uint16_t Util::checksum (const void *packet, unsigned int size, const IpAddress &srcAddr, const IpAddress &dstAddr)
+std::uint16_t Util::checksum (const void *packet, unsigned int size, const IpAddress &srcAddr, const IpAddress &dstAddr, int family)
 {
 	std::uint8_t pseudoHeader[40];
 	unsigned int pseudoHeaderSize;
@@ -32,7 +32,7 @@ std::uint16_t Util::checksum (const void *packet, unsigned int size, const IpAdd
 		std::memcpy(pseudoHeader, srcAddr.data(), 4);
 		std::memcpy(pseudoHeader + 4, dstAddr.data(), 4);
 		pseudoHeader[8] = 0;
-		pseudoHeader[9] = 112;
+		pseudoHeader[9] = family;
 		*reinterpret_cast<std::uint16_t *>(pseudoHeader + 10) = htons(size);
 		pseudoHeaderSize = 12;
 	}
@@ -41,7 +41,7 @@ std::uint16_t Util::checksum (const void *packet, unsigned int size, const IpAdd
 		std::memcpy(pseudoHeader, srcAddr.data(), 16);
 		std::memcpy(pseudoHeader + 16, dstAddr.data(), 16);
 		*reinterpret_cast<std::uint32_t *>(pseudoHeader + 32) = htonl(size);
-		*reinterpret_cast<std::uint32_t *>(pseudoHeader + 36) = htonl(112);
+		*reinterpret_cast<std::uint32_t *>(pseudoHeader + 36) = htonl(family);
 		pseudoHeaderSize = 40;
 	}
 	else
