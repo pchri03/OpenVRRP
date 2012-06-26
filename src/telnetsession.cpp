@@ -41,27 +41,29 @@
 #define RESP_INVALID_INTERVAL	"Invalid interval\n"
 
 #define RESP_ADD_ROUTER				"add router INTF VRID [ipv6]\n"
-#define RESP_ADD_ROUTER_ADDRESS		"add router INTF VRID [ipv6] address IP\n"
+#define RESP_ADD_ADDRESS			"add address INTF VRID [ipv6] IP\n"
 #define RESP_REMOVE_ROUTER			"remove router INTF VRID [ipv6]\n"
-#define RESP_REMOVE_ROUTER_ADDRESS	"remove router INTF VRID [ipv6] address IP\n"
+#define RESP_REMOVE_ADDRESS			"remove address INTF VRID [ipv6] IP\n"
 #define RESP_SET_ROUTER_PRIMARY		"set router INTF VRID [ipv6] primary IP\n"
 #define RESP_SET_ROUTER_PRIORITY	"set router INTF VRID [ipv6] priority PRIO\n"
 #define RESP_SET_ROUTER_INTERVAL	"set router INTF VRID [ipv6] interval MSEC\n"
 #define RESP_SET_ROUTER_ACCEPT		"set router INTF VRID [ipv6] accept BOOL\n"
 #define RESP_SET_ROUTER_PREEMPT		"set router INTF VRID [ipv6] preempt BOOL\n"
 #define RESP_SET_ROUTER_STATUS		"set router INTF VRID [ipv6] status [master|slave]\n"
+#define RESP_SET_ROUTER_AUTOSYNC	"set router INTF VRID [ipv6] autosync BOOL\n"
 #define RESP_ENABLE_ROUTER			"enable router INTF VRID [ipv6]\n"
 #define RESP_DISABLE_ROUTER			"disable router INTF VRID [ipv6]\n"
 #define RESP_SHOW_ROUTER			"show router [INTF] [VRID] [ipv6] [stats]\n"
 #define RESP_SHOW_STATS				"show stats\n"
 
 #define RESP_ADD					RESP_ADD_ROUTER \
-									RESP_ADD_ROUTER_ADDRESS
+									RESP_ADD_ADDRESS
 
 #define RESP_REMOVE					RESP_REMOVE_ROUTER \
-									RESP_REMOVE_ROUTER_ADDRESS
+									RESP_REMOVE_ADDRESS
 
 #define RESP_SET_ROUTER				RESP_SET_ROUTER_ACCEPT \
+									RESP_SET_ROUTER_AUTOSYNC \
 									RESP_SET_ROUTER_INTERVAL \
 									RESP_SET_ROUTER_PREEMPT \
 									RESP_SET_ROUTER_PRIMARY \
@@ -215,6 +217,8 @@ void TelnetSession::onAddCommand (const std::vector<char *> &argv)
 		SEND_RESP(RESP_ADD);
 	else if (std::strcmp(argv[1], "router") == 0)
 		onAddRouterCommand(argv);
+	else if (std::strcmp(argv[1], "address") == 0)
+		onAddAddressCommand(argv);
 	else
 		SEND_RESP(RESP_ADD);
 }
@@ -230,23 +234,8 @@ void TelnetSession::onAddRouterCommand (const std::vector<char *> &argv)
 			// add router INTF VRID ipv6
 			getService(argv, true);
 		}
-		else if (argv.size() == 7 && std::strcmp(argv[5], "address") == 0)
-		{
-			// add router INTF VRID ipv6 address IP
-
-			IpAddress addr(argv[6]);
-			if (addr.family() != AF_INET6)
-			{
-				SEND_RESP(RESP_ADD_ROUTER_ADDRESS);
-				return;
-			}			
-
-			VrrpService *service = getService(argv);
-			if (service != 0)
-				service->addIpAddress(addr);
-		}
 		else
-			SEND_RESP(RESP_ADD);
+			SEND_RESP(RESP_ADD_ROUTER);
 	}
 	else
 	{
@@ -255,14 +244,45 @@ void TelnetSession::onAddRouterCommand (const std::vector<char *> &argv)
 			// add router INTF VRID
 			getService(argv, true);
 		}
-		else if (argv.size() == 6 && std::strcmp(argv[4], "address") == 0)
+		else
+			SEND_RESP(RESP_ADD_ROUTER);
+	}
+}
+
+void TelnetSession::onAddAddressCommand (const std::vector<char *> &argv)
+{
+	bool ipv6 = (argv.size() > 4 && std::strcmp(argv[4], "ipv6") == 0);
+
+	if (ipv6)
+	{
+		if (argv.size() == 6)
 		{
-			// add router INTF VRID address IP
+			// add address INTF VRID ipv6 IP
 
 			IpAddress addr(argv[5]);
+			if (addr.family() != AF_INET6)
+			{
+				SEND_RESP(RESP_ADD_ADDRESS);
+				return;
+			}			
+
+			VrrpService *service = getService(argv);
+			if (service != 0)
+				service->addIpAddress(addr);
+		}
+		else
+			SEND_RESP(RESP_ADD_ADDRESS);
+	}
+	else
+	{
+		if (argv.size() == 5)
+		{
+			// add address INTF VRID IP
+
+			IpAddress addr(argv[4]);
 			if (addr.family() != AF_INET)
 			{
-				SEND_RESP(RESP_ADD_ROUTER_ADDRESS);
+				SEND_RESP(RESP_ADD_ADDRESS);
 				return;
 			}
 
@@ -271,11 +291,24 @@ void TelnetSession::onAddRouterCommand (const std::vector<char *> &argv)
 				service->addIpAddress(addr);
 		}
 		else
-			SEND_RESP(RESP_ADD);
+			SEND_RESP(RESP_ADD_ADDRESS);
 	}
+
 }
 
 void TelnetSession::onRemoveCommand (const std::vector<char *> &argv)
+{
+	if (argv.size() == 1)
+		SEND_RESP(RESP_REMOVE);
+	else if (std::strcmp(argv[1], "router") == 0)
+		onRemoveRouterCommand(argv);
+	else if (std::strcmp(argv[1], "address") == 0)
+		onRemoveAddressCommand(argv);
+	else
+		SEND_RESP(RESP_REMOVE);
+}
+
+void TelnetSession::onRemoveRouterCommand (const std::vector<char *> &argv)
 {
 	bool ipv6 = (argv.size() > 4 && std::strcmp(argv[4], "ipv6") == 0);
 
@@ -288,23 +321,8 @@ void TelnetSession::onRemoveCommand (const std::vector<char *> &argv)
 			if (service != 0)
 				VrrpManager::removeService(service);
 		}
-		else if (argv.size() == 7 && std::strcmp(argv[5], "address") == 0)
-		{
-			// remove router INTF VRID ipv6 address IP
-
-			IpAddress addr(argv[6]);
-			if (addr.family() != AF_INET6)
-			{
-				SEND_RESP(RESP_REMOVE_ROUTER_ADDRESS);
-				return;
-			}			
-
-			VrrpService *service = getService(argv);
-			if (service != 0)
-				service->removeIpAddress(addr);
-		}
 		else
-			SEND_RESP(RESP_REMOVE);
+			SEND_RESP(RESP_REMOVE_ROUTER);
 	}
 	else
 	{
@@ -315,14 +333,45 @@ void TelnetSession::onRemoveCommand (const std::vector<char *> &argv)
 			if (service != 0)
 				VrrpManager::removeService(service);
 		}
-		else if (argv.size() == 6 && std::strcmp(argv[4], "address") == 0)
+		else
+			SEND_RESP(RESP_REMOVE_ROUTER);
+	}
+}
+
+void TelnetSession::onRemoveAddressCommand (const std::vector<char *> &argv)
+{
+	bool ipv6 = (argv.size() > 4 && std::strcmp(argv[4], "ipv6") == 0);
+
+	if (ipv6)
+	{
+		if (argv.size() == 6)
 		{
-			// remove router INTF VRID address IP
+			// remove address INTF VRID ipv6 IP
 
 			IpAddress addr(argv[5]);
+			if (addr.family() != AF_INET6)
+			{
+				SEND_RESP(RESP_REMOVE_ADDRESS);
+				return;
+			}			
+
+			VrrpService *service = getService(argv);
+			if (service != 0)
+				service->removeIpAddress(addr);
+		}
+		else
+			SEND_RESP(RESP_REMOVE_ADDRESS);
+	}
+	else
+	{
+		if (argv.size() == 5)
+		{
+			// remove address INTF VRID IP
+
+			IpAddress addr(argv[4]);
 			if (addr.family() != AF_INET)
 			{
-				SEND_RESP(RESP_REMOVE_ROUTER_ADDRESS);
+				SEND_RESP(RESP_REMOVE_ADDRESS);
 				return;
 			}
 
@@ -331,7 +380,7 @@ void TelnetSession::onRemoveCommand (const std::vector<char *> &argv)
 				service->removeIpAddress(addr);
 		}
 		else
-			SEND_RESP(RESP_REMOVE);
+			SEND_RESP(RESP_REMOVE_ADDRESS);
 	}
 }
 
@@ -467,7 +516,30 @@ void TelnetSession::onSetRouterCommand (const std::vector<char *> &argv)
 			else if (std::strcmp(argv[offset], "status") == 0)
 			{
 				// TODO
-			}	
+			}
+			else if (std::strcmp(argv[offset], "autosync") == 0)
+			{
+				if (argv.size() > offset + 1)
+				{
+					for (int i = 0; i != sizeof(trueValues) / sizeof(trueValues[0]); ++i)
+					{
+						if (std::strcmp(argv[offset + 1], trueValues[i]) == 0)
+						{
+							service->setAutoSync(true);
+							return;
+						}
+					}
+
+					for (int i = 0; i != sizeof(falseValues) / sizeof(falseValues[0]); ++i)
+					{
+						if (std::strcmp(argv[offset + 1], falseValues[i]) == 0)
+						{
+							service->setAutoSync(false);
+							return;
+						}
+					}
+				}
+			}
 		}
 			
 		SEND_RESP(RESP_SET);
@@ -717,6 +789,7 @@ void TelnetSession::showRouter (const VrrpService *service)
 	sendFormatted(" Advertisement Interval: %u msec\n", (unsigned int)service->advertisementInterval() * 10);
 	sendFormatted(" Preempt Mode:           %s\n", service->preemptMode() ? "Yes" : "No");
 	sendFormatted(" Accept Mode:            %s\n", service->acceptMode() ? "Yes" : "No");
+	sendFormatted(" Auto Sync Mode:         %s\n", service->autoSync() ? "Yes" : "No");
 	SEND_RESP(" Address List:\n");
 
 	const IpAddressSet set = service->addresses();

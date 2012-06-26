@@ -229,6 +229,16 @@ class VrrpService : private VrrpEventListener
 			return m_enabled;
 		}
 
+		inline bool autoSync () const
+		{
+			return m_autoSync;
+		}
+
+		inline void setAutoSync (bool enabled)
+		{
+			m_autoSync = enabled;
+		}
+
 	private:
 		virtual void onIncomingVrrpPacket (
 				unsigned int interface,

@@ -70,9 +70,16 @@ void VrrpManager::removeService (VrrpService *service)
 	VrrpServiceMap::iterator interfaceServices = m_services.find(service->interface());
 	if (interfaceServices != m_services.end())
 	{
-		VrrpServiceMap::mapped_type::iterator it = interfaceServices->second.find(service->virtualRouterId());
-		interfaceServices->second.erase(it);
+		VrrpServiceMap::mapped_type::iterator routerServices = interfaceServices->second.find(service->virtualRouterId());
+		if (routerServices != interfaceServices->second.end())
+		{
+			VrrpServiceMap::mapped_type::mapped_type::iterator it = routerServices->second.find(service->family());
+			if (it != routerServices->second.end())
+			{
+				routerServices->second.erase(it);
+				delete service;
+			}
+		}
 	
-		delete service;
 	}
 }

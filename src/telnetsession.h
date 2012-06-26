@@ -41,8 +41,12 @@ class TelnetSession
 
 		void onAddCommand (const std::vector<char *> &argv);
 		void onAddRouterCommand (const std::vector<char *> &argv);
+		void onAddAddressCommand (const std::vector<char *> &argv);
 
 		void onRemoveCommand (const std::vector<char *> &argv);
+		void onRemoveRouterCommand (const std::vector<char *> &argv);
+		void onRemoveAddressCommand (const std::vector<char *> &argv);
+
 		void onSetCommand (const std::vector<char *> &argv);
 		void onSetRouterCommand (const std::vector<char *> &argv);
 		void onEnableCommand (const std::vector<char *> &argv);
