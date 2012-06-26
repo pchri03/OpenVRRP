@@ -17,7 +17,6 @@
  */
 
 #include "arpsocket.h"
-#include "icmp6socket.h"
 #include "netlink.h"
 #include "vrrpservice.h"
 #include "vrrpsocket.h"
@@ -137,7 +136,9 @@ void VrrpService::startup ()
 		if (m_family == AF_INET)
 			sendARPs();
 		else // if (m_family == AF_INET6)
-			sendNeighborAdvertisements();
+		{
+			// Neighbor advertisements are sent automatically
+		}
 
 		m_advertisementTimer.start(m_advertisementInterval * 10);
 		
@@ -185,8 +186,8 @@ void VrrpService::onMasterDownTimer ()
 			sendARPs();
 		else if (m_family == AF_INET6)
 		{
-			joinSolicitedNodeMulticast();
-			sendNeighborAdvertisements();
+			// Solicited multicast is automatically joined by Linux
+			// Neighbor advertisements is sent automatically by Linux
 		}
 		m_advertisementTimer.start(m_advertisementInterval * 10);
 
@@ -356,17 +357,6 @@ void VrrpService::sendARPs ()
 {
 	for (IpAddressSet::const_iterator address = m_addresses.begin(); address != m_addresses.end(); ++address)
 		ArpSocket::sendGratuitiousArp(m_outputInterface, *address);
-}
-
-void VrrpService::sendNeighborAdvertisements ()
-{
-	for (IpAddressSet::const_iterator address = m_addresses.begin(); address != m_addresses.end(); ++address)
-		Icmp6Socket::sendNeighborAdvertisement(m_outputInterface, *address);
-}
-
-void VrrpService::joinSolicitedNodeMulticast ()
-{
-	// TODO
 }
 
 bool VrrpService::setVirtualMac ()

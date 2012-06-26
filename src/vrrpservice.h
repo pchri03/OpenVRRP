@@ -248,8 +248,6 @@ class VrrpService : private VrrpEventListener
 
 		bool sendAdvertisement (std::uint_least8_t priority);
 		void sendARPs();
-		void sendNeighborAdvertisements();
-		void joinSolicitedNodeMulticast();
 		bool setVirtualMac();
 		bool setDefaultMac();
 		void setState (State state);
