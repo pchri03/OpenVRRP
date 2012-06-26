@@ -719,8 +719,8 @@ void TelnetSession::showRouter (const VrrpService *service)
 	sendFormatted(" Accept Mode:            %s\n", service->acceptMode() ? "Yes" : "No");
 	SEND_RESP(" Address List:\n");
 
-	const IpAddressList list = service->addresses();
-	for (IpAddressList::const_iterator addr = list.begin(); addr != list.end(); ++addr)
+	const IpAddressSet set = service->addresses();
+	for (IpAddressSet::const_iterator addr = set.begin(); addr != set.end(); ++addr)
 		sendFormatted("  %s\n", addr->toString().c_str());
 
 	SEND_RESP("\n");

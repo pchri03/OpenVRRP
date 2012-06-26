@@ -150,7 +150,8 @@ class VrrpService : private VrrpEventListener
 
 		bool addIpAddress (const IpAddress &address);
 		bool removeIpAddress (const IpAddress &address);
-		const IpAddressList &addresses () const
+
+		const IpAddressSet &addresses () const
 		{
 			return m_addresses;
 		}
@@ -280,7 +281,7 @@ class VrrpService : private VrrpEventListener
 
 		std::uint8_t m_mac[6];
 
-		IpAddressList m_addresses;
+		IpAddressSet m_addresses;
 
 		VrrpSocket *m_socket;
 

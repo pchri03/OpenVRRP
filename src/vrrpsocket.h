@@ -37,7 +37,7 @@ class VrrpSocket
 				std::uint_fast8_t virtualRouterId,
 				std::uint_fast8_t priority,
 				std::uint_fast16_t maxAdvertisementInterval,
-				const IpAddressList &addresses);
+				const IpAddressSet &addresses);
 		
 		inline int error () const
 		{

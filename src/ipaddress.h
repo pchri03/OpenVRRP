@@ -21,6 +21,7 @@
 
 #include <string>
 #include <list>
+#include <set>
 #include <cstdint>
 
 #include <netinet/in.h>
@@ -108,5 +109,6 @@ class IpAddress
 };
 
 typedef std::list<IpAddress> IpAddressList;
+typedef std::set<IpAddress> IpAddressSet;
 
 #endif // INCLUDE_OPENVRRP_IP_H

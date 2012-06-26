@@ -450,7 +450,7 @@ bool VrrpSocket::sendPacket (
 		std::uint_fast8_t virtualRouterId,
 		std::uint_fast8_t priority,
 		std::uint_fast16_t maxAdvertisementInterval,
-		const IpAddressList &addresses)
+		const IpAddressSet &addresses)
 {
 	// Sanity
 	if (address.family() != m_family)
@@ -469,7 +469,7 @@ bool VrrpSocket::sendPacket (
 	// Add IP addresses
 	std::uint8_t *ptr = m_buffer + 8;
 	unsigned int addressSize = IpAddress::familySize(m_family);
-	for (IpAddressList::const_iterator it = addresses.begin(); it != addresses.end(); ++it, ptr += addressSize)
+	for (IpAddressSet::const_iterator it = addresses.begin(); it != addresses.end(); ++it, ptr += addressSize)
 	{
 		if (it->family() != m_family)
 			return false;

@@ -354,13 +354,13 @@ void VrrpService::setState (State state)
 
 void VrrpService::sendARPs ()
 {
-	for (IpAddressList::const_iterator address = m_addresses.begin(); address != m_addresses.end(); ++address)
+	for (IpAddressSet::const_iterator address = m_addresses.begin(); address != m_addresses.end(); ++address)
 		ArpSocket::sendGratuitiousArp(m_outputInterface, *address);
 }
 
 void VrrpService::sendNeighborAdvertisements ()
 {
-	for (IpAddressList::const_iterator address = m_addresses.begin(); address != m_addresses.end(); ++address)
+	for (IpAddressSet::const_iterator address = m_addresses.begin(); address != m_addresses.end(); ++address)
 		Icmp6Socket::sendNeighborAdvertisement(m_outputInterface, *address);
 }
 
@@ -394,7 +394,7 @@ bool VrrpService::setDefaultMac ()
 bool VrrpService::addIpAddresses ()
 {
 	bool ret = true;
-	for (IpAddressList::const_iterator addr = m_addresses.begin(); addr != m_addresses.end(); ++addr)
+	for (IpAddressSet::const_iterator addr = m_addresses.begin(); addr != m_addresses.end(); ++addr)
 		ret &= (Netlink::addIpAddress(m_outputInterface, *addr));
 	return ret;
 }
@@ -402,7 +402,7 @@ bool VrrpService::addIpAddresses ()
 bool VrrpService::removeIpAddresses ()
 {
 	bool ret = true;
-	for (IpAddressList::const_iterator addr = m_addresses.begin(); addr != m_addresses.end(); ++addr)
+	for (IpAddressSet::const_iterator addr = m_addresses.begin(); addr != m_addresses.end(); ++addr)
 		ret &= (Netlink::removeIpAddress(m_outputInterface, *addr));
 	return ret;
 }
@@ -411,14 +411,13 @@ bool VrrpService::addIpAddress (const IpAddress &address)
 {
 	if (address.family() != m_family)
 		return false;
-	m_addresses.push_back(address);
+	m_addresses.insert(address);
 	return true;
 }
 
 bool VrrpService::removeIpAddress (const IpAddress &address)
 {
-	// TODO
-	return false;
+	return m_addresses.erase(address) != 0;
 }
 
 void VrrpService::setProtocolErrorReason (ProtocolErrorReason reason)
