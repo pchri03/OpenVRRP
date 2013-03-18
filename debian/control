@@ -1,0 +1,14 @@
+Source: openvrrp
+Section: net
+Priority: optional
+Maintainer: Peter Christensne <pch@ordbogen.com>
+Build-Depends:
+Standards-Version: 3.9.4.0
+
+Package: openvrrp
+Architecture: any
+Depends: ${shlibs:Depends}
+Description: VRRPv3 implementation
+ VRRPv3 implementation.
+ .
+ To utilize VRRPv3 to its fullest, your kernel must support macvlan.

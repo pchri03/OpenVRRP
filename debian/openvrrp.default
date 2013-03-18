@@ -1,0 +1,7 @@
+# Configuration file for /etc/init.d/openvrrp
+
+# Set DATAFILE to the data file where OpenVRRP loads and store its settings
+#DATADIR=/var/lib/openvrrp/configuration.dat
+
+# Set BIND to the IP and port the OpenVRRP control interface should be listening on
+#BIND=127.0.0.1:7777

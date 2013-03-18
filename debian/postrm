@@ -1,0 +1,4 @@
+#!/bin/sh
+if [ "$1" = "purge" ]; then
+	rm -f /var/lib/openvrrp/configuration.dat
+fi
