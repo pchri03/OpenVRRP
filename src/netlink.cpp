@@ -165,9 +165,11 @@ IpAddress Netlink::getPrimaryIpAddress (int interface, int family)
 	}
 }
 
-bool Netlink::modifyIpAddress (int interface, const IpAddress &ip, bool add)
+bool Netlink::modifyIpAddress (int interface, const IpSubnet &ip, bool add)
 {
-	Attribute attr(IFA_LOCAL, ip.data(), ip.size());
+	// RTM_NEWADDR | RTM_DELADDR
+
+	Attribute attr(IFA_LOCAL, ip.address().data(), ip.address().size());
 
 	std::vector<std::uint8_t> buffer;
 	buffer.resize(16 + 8 + attr.effectiveSize());
@@ -180,8 +182,8 @@ bool Netlink::modifyIpAddress (int interface, const IpAddress &ip, bool add)
 	hdr->nlmsg_pid = getpid();
 
 	ifaddrmsg *msg = reinterpret_cast<ifaddrmsg *>(buffer.data() + 16);
-	msg->ifa_family = ip.family();
-	msg->ifa_prefixlen = ip.size() * 8;
+	msg->ifa_family = ip.address().family();
+	msg->ifa_prefixlen = ip.cidr();
 	msg->ifa_flags = 0;
 	msg->ifa_scope = RT_SCOPE_LINK;
 	msg->ifa_index = interface;
@@ -200,6 +202,7 @@ bool Netlink::modifyIpAddress (int interface, const IpAddress &ip, bool add)
 
 int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress, const char *name)
 {
+	// RTM_NEWLINK:
 	// IFLA_IFNAME = name
 	// IFLA_ADDRESS = macAddress
 	// IFLA_LINK = interface
@@ -267,6 +270,8 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 
 bool Netlink::removeInterface (int interface)
 {
+	// RTM_DELLINK:
+
 	std::uint8_t buffer[16 + 16];
 
 	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer);

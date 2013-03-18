@@ -20,6 +20,7 @@
 #define INCLUDE_OPENVRRP_VRRPSERVICE_H
 
 #include "ipaddress.h"
+#include "ipsubnet.h"
 #include "timer.h"
 #include "vrrpeventlistener.h"
 
@@ -148,8 +149,13 @@ class VrrpService : private VrrpEventListener
 			m_acceptMode = enabled;
 		}
 
-		bool addIpAddress (const IpAddress &address);
-		bool removeIpAddress (const IpAddress &address);
+		bool addIpAddress (const IpSubnet &subnet);
+		bool removeIpAddress (const IpSubnet &subnet);
+
+		const IpSubnetSet &subnets () const
+		{
+			return m_subnets;
+		}
 
 		const IpAddressSet &addresses () const
 		{
@@ -229,16 +235,6 @@ class VrrpService : private VrrpEventListener
 			return m_enabled;
 		}
 
-		inline bool autoSync () const
-		{
-			return m_autoSync;
-		}
-
-		inline void setAutoSync (bool enabled)
-		{
-			m_autoSync = enabled;
-		}
-
 	private:
 		virtual void onIncomingVrrpPacket (
 				unsigned int interface,
@@ -289,6 +285,7 @@ class VrrpService : private VrrpEventListener
 
 		std::uint8_t m_mac[6];
 
+		IpSubnetSet m_subnets;
 		IpAddressSet m_addresses;
 
 		VrrpSocket *m_socket;
@@ -309,8 +306,6 @@ class VrrpService : private VrrpEventListener
 		std::uint_fast64_t m_statsPacketLengthErrors;
 
 		NewMasterReason m_pendingNewMasterReason;
-
-		bool m_autoSync;
 		bool m_enabled;
 };
 

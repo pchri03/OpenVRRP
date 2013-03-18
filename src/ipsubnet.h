@@ -45,6 +45,8 @@ class IpSubnet
 		{
 		}
 
+		bool operator< (const IpSubnet &other) const;
+
 		IpAddress address () const
 		{
 			return m_address;

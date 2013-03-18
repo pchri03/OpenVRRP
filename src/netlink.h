@@ -20,6 +20,7 @@
 #define INCLUDE_NETLINK_H
 
 #include "ipaddress.h"
+#include "ipsubnet.h"
 
 #include <cstdint>
 #include <list>
@@ -34,19 +35,19 @@ class Netlink
 
 		static IpAddress getPrimaryIpAddress (int interface, int family);
 
-		static bool addIpAddress (int interface, const IpAddress &ip)
+		static bool addIpAddress (int interface, const IpSubnet &ip)
 		{
 			return modifyIpAddress(interface, ip, true);
 		}
 
-		static bool removeIpAddress (int interface, const IpAddress &ip)
+		static bool removeIpAddress (int interface, const IpSubnet &ip)
 		{
 			return modifyIpAddress(interface, ip, false);
 		}
 		static bool toggleInterface (int interface, bool up);
 
 	private:
-		static bool modifyIpAddress (int interface, const IpAddress &ip, bool add);
+		static bool modifyIpAddress (int interface, const IpSubnet &ip, bool add);
 		static int sendNetlinkPacket (const void *packet, unsigned int size, int family = AF_UNSPEC, IpAddress *address = 0, int *interface = 0);
 
 		class Attribute

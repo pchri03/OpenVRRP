@@ -27,12 +27,7 @@ IpSubnet::IpSubnet (const char *address)
 	if (ptr == 0)
 	{
 		m_address = IpAddress(address);
-		if (m_address.family() == AF_INET)
-			m_cidr = 32;
-		else if (m_address.family() == AF_INET6)
-			m_cidr = 128;
-		else
-			m_cidr = 0;
+		m_cidr = m_address.size() * 8;
 	}
 	else
 	{
@@ -51,13 +46,8 @@ IpSubnet::IpSubnet (const char *address)
 
 IpSubnet::IpSubnet (const IpAddress &address)
 	: m_address(address)
+	, m_cidr(address.size() * 8)
 {
-	if (address.family() == AF_INET)
-		m_cidr = 32;
-	else if (address.family() == AF_INET6)
-		m_cidr = 128;
-	else
-		m_cidr = 0;
 }
 
 std::string IpSubnet::toString () const
@@ -65,4 +55,16 @@ std::string IpSubnet::toString () const
 	std::stringstream str(std::ios_base::out);
 	str << m_address.toString() << '/' << m_cidr;
 	return str.str();
+}
+
+bool IpSubnet::operator< (const IpSubnet &other) const
+{
+	if (m_address < other.m_address)
+		return true;
+	else if (m_address > other.m_address)
+		return false;
+	else if (m_cidr < other.m_cidr)
+		return true;
+	else
+		return false;
 }

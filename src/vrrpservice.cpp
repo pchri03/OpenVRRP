@@ -60,7 +60,6 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 
 	m_pendingNewMasterReason(MasterNotResponding),
 
-	m_autoSync(false),
 	m_enabled(false)
 {
 	if (m_family == AF_INET)
@@ -254,27 +253,6 @@ void VrrpService::onIncomingVrrpPacket (
 				// There are differences between incoming address list and our list
 				syslog(LOG_WARNING, "%s (Router %u, Interface %u): Address list mismatch", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface);
 				++m_statsAddressListErrors;
-
-				// If allowed, update our address list to reflect that of the master
-				if (m_autoSync)
-				{
-					std::vector<IpAddress> list(differenceCount);
-					std::vector<IpAddress>::iterator listEnd;
-					
-					listEnd = std::set_intersection(difference.begin(), differenceEnd, incomingList.begin(), incomingList.end(), list.begin());
-					for (std::vector<IpAddress>::iterator addr = list.begin(); addr != listEnd; ++addr)
-					{
-						addIpAddress(*addr);
-					}
-
-					listEnd = std::set_intersection(difference.begin(), differenceEnd, serviceList.begin(), serviceList.end(), list.begin());
-					for (std::vector<IpAddress>::iterator addr = list.begin(); addr != listEnd; ++addr)
-					{
-						removeIpAddress(*addr);
-					}
-
-					syslog(LOG_NOTICE, "%s (Router %u, Interface %u): Synchronized address list", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface);
-				}
 			}
 
 			m_pendingNewMasterReason = MasterNotResponding;
@@ -384,7 +362,7 @@ bool VrrpService::setDefaultMac ()
 bool VrrpService::addIpAddresses ()
 {
 	bool ret = true;
-	for (IpAddressSet::const_iterator addr = m_addresses.begin(); addr != m_addresses.end(); ++addr)
+	for (IpSubnetSet::const_iterator addr = m_subnets.begin(); addr != m_subnets.end(); ++addr)
 		ret &= (Netlink::addIpAddress(m_outputInterface, *addr));
 	return ret;
 }
@@ -392,22 +370,26 @@ bool VrrpService::addIpAddresses ()
 bool VrrpService::removeIpAddresses ()
 {
 	bool ret = true;
-	for (IpAddressSet::const_iterator addr = m_addresses.begin(); addr != m_addresses.end(); ++addr)
+	for (IpSubnetSet::const_iterator addr = m_subnets.begin(); addr != m_subnets.end(); ++addr)
 		ret &= (Netlink::removeIpAddress(m_outputInterface, *addr));
 	return ret;
 }
 
-bool VrrpService::addIpAddress (const IpAddress &address)
+bool VrrpService::addIpAddress (const IpSubnet &subnet)
 {
-	if (address.family() != m_family)
+	if (subnet.address().family() != m_family)
 		return false;
-	m_addresses.insert(address);
+	m_subnets.insert(subnet);
+	m_addresses.insert(subnet.address());
 	return true;
 }
 
-bool VrrpService::removeIpAddress (const IpAddress &address)
+bool VrrpService::removeIpAddress (const IpSubnet &subnet)
 {
-	return m_addresses.erase(address) != 0;
+	bool ret = false;
+	ret |= m_subnets.erase(subnet);
+	ret |= m_addresses.erase(subnet.address());
+	return ret;
 }
 
 void VrrpService::setProtocolErrorReason (ProtocolErrorReason reason)
