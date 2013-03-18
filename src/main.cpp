@@ -24,11 +24,16 @@
 #include "telnetserver.h"
 #include "configurator.h"
 
+#include <iostream>
+#include <cstdlib>
+
+#include <getopt.h>
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <syslog.h>
-#include <iostream>
-#include <cstdlib>
+
+#define DEFAULT_CONFIG_FILE "configuration.dat"
+#define DEFAULT_BIND_ADDR "127.0.0.1:7777"
 
 static void cleanup ()
 {
@@ -36,19 +41,76 @@ static void cleanup ()
 	VrrpSocket::cleanup();
 }
 
-int main ()
+static void showHelp ()
 {
-	openlog("openvrrp", LOG_PERROR, LOG_DAEMON);
+	std::cout <<
+		"Usage: openvrrp [OPTIONS]\n"
+		"VRRPv3 daemon\n"
+		"\n"
+		"  -c, --config=FILE  Set configuration data file to FILE (Default: " DEFAULT_CONFIG_FILE ")\n"
+		"  -s, --stdout       Log to stdout instead of syslog\n"
+		"  -b, --bind=ADDR    Bind to address / port (Default: " DEFAULT_BIND_ADDR ")\n"
+		"  -h, --help         Display this message" << std::endl;			
+}
+
+int main (int argc, char *argv[])
+{
+	bool logToStdout = false;
+	const char *configuration = DEFAULT_CONFIG_FILE;
+	const char *bindAddr = DEFAULT_BIND_ADDR;
+	for (;;)
+	{
+		static const option longOptions[] = {
+			{"help", no_argument, 0, 'h'},
+			{"config", required_argument, 0, 'c'},
+			{"bind", required_argument, 0, 'b'},
+			{"stdout", no_argument, 0, 's'},
+			{0, 0, 0, 0}
+		};
+
+		int optionIndex = 0;
+		int c = getopt_long(argc, argv, "hc:b:s", longOptions, &optionIndex);
+		if (c == -1)
+			break;
+
+		switch (c)
+		{
+			case 'c':
+				configuration = optarg;
+				break;
+
+			case 'b':
+				bindAddr = optarg;
+				break;
+
+			case 'h':
+				showHelp();
+				return 0;
+
+			case 's':
+				logToStdout = true;
+				break;
+		
+			default:
+				std::abort();
+		}
+	}
+
+	if (logToStdout)
+		openlog("openvrrp", LOG_PERROR, LOG_DAEMON);
+	else
+		openlog("openvrrp", 0, LOG_DAEMON);
 
 	std::atexit(cleanup);
 
-	TelnetServer server("127.0.0.1:7777");
+	TelnetServer server(bindAddr);
 	if (!server.start())
 		return -1;
 
 	VrrpManager::removeVrrpInterfaces();
 
-	Configurator::readConfiguration("/etc/openvrrp.conf");
+	Configurator::setConfigurationFile(configuration);
+	Configurator::readConfiguration();
 
 	return MainLoop::run() ? 0 : -1;
 }

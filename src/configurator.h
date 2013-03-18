@@ -30,8 +30,9 @@ class VrrpService;
 class Configurator
 {
 	public:
-		static bool readConfiguration (const char *filename);
-		static bool writeConfiguration (const char *filename);
+		static void setConfigurationFile (const char *filename);
+		static bool readConfiguration (const char *filename = 0);
+		static bool writeConfiguration (const char *filename = 0);
 
 	private:
 		static bool readInt (std::istream &stream, int &value);
@@ -47,6 +48,9 @@ class Configurator
 		static bool writeSubnet (std::ostream &stream, const IpSubnet &subnet);
 
 		static std::vector<VrrpService *> services ();
+
+	private:
+		static const char *filename;
 };
 
 #endif // INCLUDE_CONFIGURATOR_H

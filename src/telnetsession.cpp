@@ -55,7 +55,7 @@
 #define RESP_DISABLE_ROUTER			"disable router INTF VRID [ipv6]\n"
 #define RESP_SHOW_ROUTER			"show router [INTF] [VRID] [ipv6] [stats]\n"
 #define RESP_SHOW_STATS				"show stats\n"
-#define RESP_SAVE					"save\n"
+#define RESP_SAVE					"save [FILENAME]\n"
 
 #define RESP_ADD					RESP_ADD_ROUTER \
 									RESP_ADD_ADDRESS
@@ -817,9 +817,9 @@ void TelnetSession::showRouterStats (const VrrpService *service)
 	SEND_RESP("\n");
 }
 
-void TelnetSession::onSaveCommand (const std::vector<char *> &)
+void TelnetSession::onSaveCommand (const std::vector<char *> &argv)
 {
-	if (Configurator::writeConfiguration("/etc/openvrrp.conf"))
+	if (Configurator::writeConfiguration(argv.size() > 1 ? argv[1] : 0))
 		SEND_RESP("Save successfully\n");
 	else
 		SEND_RESP("Save failed\n");

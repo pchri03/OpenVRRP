@@ -50,9 +50,11 @@
    }
 */	
 
+const char *Configurator::filename = 0;
+
 bool Configurator::readConfiguration (const char *filename)
 {
-	std::ifstream file(filename);
+	std::ifstream file(filename == 0 ? Configurator::filename : filename);
 	if (!file.good())
 		return false;
 
@@ -194,7 +196,7 @@ std::vector<VrrpService *> Configurator::services ()
 
 bool Configurator::writeConfiguration (const char *filename)
 {
-	std::ofstream file(filename, std::ios_base::out | std::ios_base::trunc);
+	std::ofstream file(filename == 0 ? Configurator::filename : filename, std::ios_base::out | std::ios_base::trunc);
 	if (!file.good())
 		return false;
 
@@ -347,4 +349,9 @@ bool Configurator::readSubnet (std::istream &stream, IpSubnet &subnet)
 bool Configurator::writeSubnet (std::ostream &stream, const IpSubnet &subnet)
 {
 	return writeIp(stream, subnet.address()) && writeInt(stream, subnet.cidr());
+}
+
+void Configurator::setConfigurationFile (const char *filename)
+{
+	Configurator::filename = filename;
 }
