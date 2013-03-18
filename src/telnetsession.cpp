@@ -675,9 +675,12 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 	}
 }
 
-void TelnetSession::onShowStatsCommand (const std::vector<char *> &argv)
+void TelnetSession::onShowStatsCommand (const std::vector<char *> &)
 {
-	// TODO
+	sendFormatted("Router Checksum Errors: %llu\n", (unsigned long long int)VrrpSocket::routerChecksumErrors());
+	sendFormatted("Router Version Errors:  %llu\n", (unsigned long long int)VrrpSocket::routerVersionErrors());
+	sendFormatted("Router VRID Errors:     %lu\n", (unsigned long long int)VrrpSocket::routerVrIdErrors());
+	SEND_RESP("\n");
 }
 
 VrrpService *TelnetSession::getService (const std::vector<char *> &argv, bool create)
