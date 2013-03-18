@@ -400,7 +400,7 @@ bool VrrpSocket::onSocketPacket ()
 	IpAddressList addresses;
 	const std::uint8_t *ptr = packet + 8;
 	for (std::uint_fast8_t i = 0; i != addressCount; ++i, ptr += addressSize)
-		addresses.push_back(IpAddress(m_buffer, m_family));
+		addresses.push_back(IpAddress(ptr, m_family));
 
 	// Call event listener
 	listener->second->onIncomingVrrpPacket(
