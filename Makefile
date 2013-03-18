@@ -2,8 +2,8 @@ CXXFILES:=$(wildcard src/*.cpp)
 OFILES=$(CXXFILES:.cpp=.o)
 TARGET=openvrrp
 CXX:=g++
-EXTRA_CXXFLAGS=-std=c++0x -g
-EXTRA_LDFLAGS=-g
+EXTRA_CXXFLAGS=-std=c++0x
+EXTRA_LDFLAGS=
 
 all: $(TARGET)
 
