@@ -1,3 +1,9 @@
+openvrrp (0.1.1-1) unstable; urgency=low
+
+  * Fixed reading input address list
+
+ -- Peter Christensen <pch@ordbogen.com>  Mon,  18 Mar 2013 16:21:30 +0100
+
 openvrrp (0.1-1) unstable; urgency=low
 
   * Initial version
