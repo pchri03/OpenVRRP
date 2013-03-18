@@ -38,6 +38,7 @@ class VrrpManager
 		static void removeService (int interface, std::uint_least8_t virtualRouterId, int family);
 		static void removeService (VrrpService *service);
 
+		static void removeVrrpInterfaces ();
 		static void cleanup ();
 
 		enum ProtocolErrorReason

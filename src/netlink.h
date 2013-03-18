@@ -25,6 +25,10 @@
 #include <cstdint>
 #include <list>
 #include <vector>
+#include <map>
+#include <string>
+
+typedef std::map<int,std::string> InterfaceList;
 
 class Netlink
 {
@@ -45,6 +49,8 @@ class Netlink
 			return modifyIpAddress(interface, ip, false);
 		}
 		static bool toggleInterface (int interface, bool up);
+
+		static InterfaceList interfaces ();
 
 	private:
 		static bool modifyIpAddress (int interface, const IpSubnet &ip, bool add);
@@ -70,7 +76,6 @@ class Netlink
 				std::vector<std::uint8_t> m_buffer;
 				AttributeList m_attributes;
 		};
-
 };
 
 #endif // INCLUDE_NETLINK_H

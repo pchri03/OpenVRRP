@@ -17,8 +17,19 @@
  */
 #include "vrrpmanager.h"
 #include "vrrpservice.h"
+#include "netlink.h"
 
 VrrpManager::VrrpServiceMap VrrpManager::m_services;
+
+void VrrpManager::removeVrrpInterfaces ()
+{
+	InterfaceList interfaces = Netlink::interfaces();
+	for (InterfaceList::const_iterator interface = interfaces.begin(); interface != interfaces.end(); ++interface)
+	{
+		if (interface->second.substr(0, 5) == "vrrp.")
+			Netlink::removeInterface(interface->first);
+	}
+}
 
 VrrpService *VrrpManager::getService (int interface, std::uint_fast8_t virtualRouterId, int family, bool createIfMissing)
 {

@@ -19,9 +19,10 @@
 #include "netlink.h"
 
 #include <cstring>
-
 #include <cstdio>
+#include <fstream>
 
+#include <dirent.h>
 #include <syslog.h>
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -292,6 +293,38 @@ bool Netlink::removeInterface (int interface)
 	syslog(LOG_DEBUG, "Removing interface %i", interface);
 
 	return sendNetlinkPacket(buffer, sizeof(buffer)) >= 0;
+}
+
+InterfaceList Netlink::interfaces ()
+{
+	DIR *dir;
+	InterfaceList list;
+
+	if ((dir = opendir("/sys/class/net/")) != 0)
+	{
+		char filename[sizeof("/sys/class/net//ifindex") + IFNAMSIZ];
+
+		dirent *entry;
+		while ((entry = readdir(dir)) != 0)
+		{
+			if (entry->d_name[0] != '.' && std::strlen(entry->d_name) <= IFNAMSIZ)
+			{
+				std::sprintf(filename, "/sys/class/net/%s/ifindex", entry->d_name);
+
+				std::ifstream file(filename);
+				if (file.good())
+				{
+					int index;
+					file >> index;
+					file.close();
+					list[index] = entry->d_name;
+				}
+			}
+		}
+		closedir(dir);
+	}
+
+	return list;
 }
 
 Netlink::Attribute::Attribute (std::uint16_t type, const void *data, unsigned int size) :

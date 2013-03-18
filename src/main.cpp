@@ -42,7 +42,10 @@ int main ()
 	std::atexit(cleanup);
 
 	TelnetServer server("127.0.0.1:7777");
-	server.start();
+	if (!server.start())
+		return -1;
+
+	VrrpManager::removeVrrpInterfaces();
 
 	return MainLoop::run() ? 0 : -1;
 }
