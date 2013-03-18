@@ -307,6 +307,7 @@ void VrrpService::setState (State state)
 	if (m_state != state)
 	{
 		static const char *states[] = {"Initialize", "Backup", "Master"};
+		State oldState = m_state;
 		m_state = state;
 		if (m_state == Master)
 		{
@@ -325,7 +326,8 @@ void VrrpService::setState (State state)
 		}
 		else
 		{
-			removeIpAddresses();
+			if (oldState != Initialize)
+				removeIpAddresses();
 			setDefaultMac();
 		}
 	}
