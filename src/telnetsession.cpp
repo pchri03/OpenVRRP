@@ -22,6 +22,7 @@
 #include "vrrpsocket.h"
 #include "vrrpmanager.h"
 #include "vrrpservice.h"
+#include "configurator.h"
 
 #include <cstring>
 #include <cstdarg>
@@ -54,6 +55,7 @@
 #define RESP_DISABLE_ROUTER			"disable router INTF VRID [ipv6]\n"
 #define RESP_SHOW_ROUTER			"show router [INTF] [VRID] [ipv6] [stats]\n"
 #define RESP_SHOW_STATS				"show stats\n"
+#define RESP_SAVE					"save\n"
 
 #define RESP_ADD					RESP_ADD_ROUTER \
 									RESP_ADD_ADDRESS
@@ -83,7 +85,8 @@
 									"exit\n" \
 									"help\n" \
 									RESP_REMOVE \
-									RESP_SET
+									RESP_SET \
+									RESP_SAVE
 
 #define RESP_PROMPT				"OpenVRRP> "
 
@@ -203,6 +206,8 @@ bool TelnetSession::onCommand (const std::vector<char *> &argv)
 		return false;
 	else if (std::strcmp(argv[0], "help") == 0)
 		SEND_RESP(RESP_HELP);
+	else if (std::strcmp(argv[0], "save") == 0)
+		onSaveCommand(argv);
 	else
 		SEND_RESP(RESP_INVALID_COMMAND);
 
@@ -523,6 +528,12 @@ void TelnetSession::onSetRouterCommand (const std::vector<char *> &argv)
 
 void TelnetSession::onEnableCommand (const std::vector<char *> &argv)
 {
+	if (argv.size() < 4)
+	{
+		SEND_RESP(RESP_ENABLE_ROUTER);
+		return;
+	}
+
 	VrrpService *service = getService(argv);
 	if (service != 0)
 		service->enable();
@@ -530,6 +541,12 @@ void TelnetSession::onEnableCommand (const std::vector<char *> &argv)
 
 void TelnetSession::onDisableCommand (const std::vector<char *> &argv)
 {
+	if (argv.size() < 4)
+	{
+		SEND_RESP(RESP_DISABLE_ROUTER);
+		return;
+	}
+
 	VrrpService *service = getService(argv);
 	if (service != 0)
 		service->disable();
@@ -799,3 +816,12 @@ void TelnetSession::showRouterStats (const VrrpService *service)
 	sendFormatted(" Packet Length Errors:                  %llu\n", (unsigned long long int)service->statsPacketLengthErrors());
 	SEND_RESP("\n");
 }
+
+void TelnetSession::onSaveCommand (const std::vector<char *> &)
+{
+	if (Configurator::writeConfiguration("/etc/openvrrp.conf"))
+		SEND_RESP("Save successfully\n");
+	else
+		SEND_RESP("Save failed\n");
+}
+

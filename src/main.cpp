@@ -22,6 +22,7 @@
 #include "vrrpsocket.h"
 #include "ipaddress.h"
 #include "telnetserver.h"
+#include "configurator.h"
 
 #include <net/if.h>
 #include <arpa/inet.h>
@@ -46,6 +47,8 @@ int main ()
 		return -1;
 
 	VrrpManager::removeVrrpInterfaces();
+
+	Configurator::readConfiguration("/etc/openvrrp.conf");
 
 	return MainLoop::run() ? 0 : -1;
 }

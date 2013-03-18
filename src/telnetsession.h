@@ -55,6 +55,8 @@ class TelnetSession
 
 		void onShowRouterCommand (const std::vector<char *> &argv);
 		void onShowStatsCommand (const std::vector<char *> &argv);
+
+		void onSaveCommand (const std::vector<char *> &argv);
 		
 		void showRouter (const VrrpService *service);
 		void showRouterStats (const VrrpService *service);
