@@ -44,6 +44,9 @@ class VrrpSocket
 			return m_error;
 		}
 
+		bool addInterface (int interface);
+		bool removeInterface (int interface);
+
 		static VrrpSocket *instance (int family);
 		static void cleanup ();
 
@@ -77,6 +80,8 @@ class VrrpSocket
 
 	private:
 		typedef std::map<unsigned int, std::map<std::uint_fast8_t, VrrpEventListener *> > EventListenerMap;
+		typedef std::map<int, unsigned int> InterfaceMap;
+
 		int m_family;
 		int m_error;
 		int m_socket;
@@ -85,6 +90,7 @@ class VrrpSocket
 		EventListenerMap m_listeners;
 		std::uint8_t m_buffer[2048];
 		std::uint8_t m_controlBuffer[1024];
+		std::map<int,unsigned int> m_interfaceCount;
 		static std::uint_fast64_t m_routerChecksumErrors;
 		static std::uint_fast64_t m_routerVersionErrors;
 		static std::uint_fast64_t m_routerVrIdErrors;

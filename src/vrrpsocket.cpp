@@ -98,17 +98,6 @@ bool VrrpSocket::createSocket ()
 			return false;
 		}
 
-		ip_mreqn req;
-		req.imr_multiaddr.s_addr = *reinterpret_cast<const std::uint32_t *>(m_multicastAddress.data());
-		req.imr_address.s_addr = INADDR_ANY;
-		req.imr_ifindex = 0;
-		if (setsockopt(m_socket, SOL_IP, IP_ADD_MEMBERSHIP, &req, sizeof(req)) == -1)
-		{
-			m_error = errno;
-			syslog(LOG_ERR, "%s: Error joining multicast address: %s", m_name, std::strerror(m_error));
-			return false;
-		}
-
 		val = 1;
 		if (setsockopt(m_socket, SOL_IP, IP_PKTINFO, &val, sizeof(val)) == -1)
 		{
@@ -144,16 +133,6 @@ bool VrrpSocket::createSocket ()
 			syslog(LOG_ERR, "%s: Error setting multicast hop limit: %s", m_name, std::strerror(m_error));
 			return false;
 		}
-
-		ipv6_mreq req;
-		std::memcpy(&req.ipv6mr_multiaddr, m_multicastAddress.data(), 16);
-		req.ipv6mr_interface = 0;
-		if (setsockopt(m_socket, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &req, sizeof(req)) == -1)
-		{
-			m_error = errno;
-			syslog(LOG_ERR, "%s: Error joining multicast address: %s", m_name, std::strerror(m_error));
-			return false;
-		}
 	}
 
 	return true;
@@ -165,6 +144,86 @@ void VrrpSocket::closeSocket ()
 	{
 		while (close(m_socket) == -1 && errno == EINTR);
 		m_socket = -1;
+	}
+}
+
+bool VrrpSocket::addInterface (int interface)
+{
+	InterfaceMap::iterator it = m_interfaceCount.find(interface);
+	if (it != m_interfaceCount.end())
+		++it->second;
+	else if (m_family == AF_INET)
+	{
+		ip_mreqn req;
+		req.imr_multiaddr.s_addr = *reinterpret_cast<const std::uint32_t *>(m_multicastAddress.data());
+		req.imr_address.s_addr = INADDR_ANY;
+		req.imr_ifindex = interface;
+		if (setsockopt(m_socket, SOL_IP, IP_ADD_MEMBERSHIP, &req, sizeof(req)) == -1)
+		{
+			m_error = errno;
+			syslog(LOG_ERR, "%s: Error joining multicast address: %s", m_name, std::strerror(m_error));
+			return false;
+		}
+		else
+			m_interfaceCount[interface] = 1;
+	}
+	else // if (m_family == AF_INET6)
+	{
+		ipv6_mreq req;
+		std::memcpy(&req.ipv6mr_multiaddr, m_multicastAddress.data(), 16);
+		req.ipv6mr_interface = interface;
+		if (setsockopt(m_socket, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &req, sizeof(req)) == -1)
+		{
+			m_error = errno;
+			syslog(LOG_ERR, "%s: Error joining multicast address: %s", m_name, std::strerror(m_error));
+			return false;
+		}
+		else
+			m_interfaceCount[interface] = 1;
+	}
+
+	return true;
+}
+
+bool VrrpSocket::removeInterface (int interface)
+{
+	InterfaceMap::iterator it = m_interfaceCount.find(interface);
+	if (it == m_interfaceCount.end())
+		return false;
+	else if (it->second == 1)
+	{
+		if (m_family == AF_INET)
+		{
+			ip_mreqn req;
+			req.imr_multiaddr.s_addr = *reinterpret_cast<const std::uint32_t *>(m_multicastAddress.data());
+			req.imr_address.s_addr = INADDR_ANY;
+			req.imr_ifindex = interface;
+			if (setsockopt(m_socket, SOL_IP, IP_DROP_MEMBERSHIP, &req, sizeof(req)) == -1)
+			{
+				m_error = errno;
+				syslog(LOG_ERR, "%s: Error joining multicast address: %s", m_name, std::strerror(m_error));
+				return false;
+			}
+		}
+		else // if (m_family == AF_INET6)
+		{
+			ipv6_mreq req;
+			std::memcpy(&req.ipv6mr_multiaddr, m_multicastAddress.data(), 16);
+			req.ipv6mr_interface = interface;
+			if (setsockopt(m_socket, SOL_IPV6, IPV6_DROP_MEMBERSHIP, &req, sizeof(req)) == -1)
+			{
+				m_error = errno;
+				syslog(LOG_ERR, "%s: Error joining multicast address: %s", m_name, std::strerror(m_error));
+				return false;
+			}
+		}
+		m_interfaceCount.erase(it);
+		return true;
+	}
+	else
+	{
+		--it->second;
+		return true;
 	}
 }
 
