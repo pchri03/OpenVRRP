@@ -351,8 +351,8 @@ void TelnetSession::onRemoveAddressCommand (const std::vector<char *> &argv)
 		{
 			// remove address INTF VRID ipv6 IP
 
-			IpAddress addr(argv[5]);
-			if (addr.family() != AF_INET6)
+			IpSubnet subnet(argv[5]);
+			if (subnet.address().family() != AF_INET6)
 			{
 				SEND_RESP(RESP_REMOVE_ADDRESS);
 				return;
@@ -360,7 +360,7 @@ void TelnetSession::onRemoveAddressCommand (const std::vector<char *> &argv)
 
 			VrrpService *service = getService(argv);
 			if (service != 0)
-				service->removeIpAddress(addr);
+				service->removeIpAddress(subnet);
 		}
 		else
 			SEND_RESP(RESP_REMOVE_ADDRESS);
@@ -371,8 +371,8 @@ void TelnetSession::onRemoveAddressCommand (const std::vector<char *> &argv)
 		{
 			// remove address INTF VRID IP
 
-			IpAddress addr(argv[4]);
-			if (addr.family() != AF_INET)
+			IpSubnet subnet(argv[4]);
+			if (subnet.address().family() != AF_INET)
 			{
 				SEND_RESP(RESP_REMOVE_ADDRESS);
 				return;
@@ -380,7 +380,7 @@ void TelnetSession::onRemoveAddressCommand (const std::vector<char *> &argv)
 
 			VrrpService *service = getService(argv);
 			if (service != 0)
-				service->removeIpAddress(addr);
+				service->removeIpAddress(subnet);
 		}
 		else
 			SEND_RESP(RESP_REMOVE_ADDRESS);
