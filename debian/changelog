@@ -1,3 +1,10 @@
+openvrrp (0.1.2-1) unstable; urgency=low
+
+  * Only join multicast on necessary interfaces. This solves a but where
+    openvrrp couldn't join the multicast.
+
+ -- Peter Christensen <pch@ordbogen.com>  Mon,  19 Mar 2013 09:42:11 +0100
+
 openvrrp (0.1.1-1) unstable; urgency=low
 
   * Fixed reading input address list
