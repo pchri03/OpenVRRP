@@ -59,6 +59,7 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family,
 	uint8_t buffer[4096];
 	int ret = 0;
 	const nlmsghdr *hdr = reinterpret_cast<const nlmsghdr *>(buffer);
+	bool hasAddress = false;
 	do
 	{
 		unsigned int size = read(s, buffer, sizeof(buffer));
@@ -71,7 +72,7 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family,
 		hdr = reinterpret_cast<const nlmsghdr *>(buffer);
 
 		const std::uint8_t *ptr = buffer;
-		while (size >= NLA_ALIGN(hdr->nlmsg_len) && hdr->nlmsg_len >= 16)
+		while (size >= 16 && size >= NLA_ALIGN(hdr->nlmsg_len))
 		{
 			if (hdr->nlmsg_type == NLMSG_ERROR)
 			{
@@ -94,14 +95,14 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family,
 				if (interface != 0 && address != 0 && hdr->nlmsg_len >= 24)
 				{
 					const ifaddrmsg *msg = reinterpret_cast<const ifaddrmsg *>(ptr + 16);
-					if (*interface == msg->ifa_index)
+					if (*interface == msg->ifa_index && (msg->ifa_flags & IFA_F_PERMANENT))
 					{
 						unsigned int left = hdr->nlmsg_len - 24;
 						const std::uint8_t *attrptr = ptr + 24;
 						while (left >= 4)
 						{
 							const nlattr *attr = reinterpret_cast<const nlattr *>(attrptr);
-							if (address != 0 && (attr->nla_type == IFA_LOCAL || attr->nla_type == IFA_ADDRESS))
+							if (!hasAddress && address != 0 && attr->nla_type == IFA_LOCAL)
 							{
 								IpAddress addr(attrptr + 4, family);
 								if (family == AF_INET6)
@@ -109,12 +110,14 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family,
 									if (!IN6_IS_ADDR_LINKLOCAL(addr.data()))
 									{
 										*address = addr;
+										hasAddress = true;
 										break;
 									}
 								}
 								else // if (family == AF_INET)
 								{
-									*address = IpAddress(attrptr + 4, family);
+									*address = addr;
+									hasAddress = true;
 									break;
 								}
 							}
@@ -128,6 +131,7 @@ int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family,
 
 			ptr += NLA_ALIGN(hdr->nlmsg_len);
 			size -= NLA_ALIGN(hdr->nlmsg_len);
+			hdr = reinterpret_cast<const nlmsghdr *>(ptr);
 		}
 	} while (hdr->nlmsg_flags & NLM_F_MULTI && hdr->nlmsg_type != NLMSG_DONE);
 
