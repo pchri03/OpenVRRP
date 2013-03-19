@@ -1,3 +1,10 @@
+openvrrp (0.1.3-1) unstable; uergency=low
+
+  * Fixed netlink parsing
+  * Fixed detection of primary IP address
+
+ -- Peter Christensen <pch@ordbogen.com>  Mon,  19 Mar 2013 13:34:57 +0100
+
 openvrrp (0.1.2-1) unstable; urgency=low
 
   * Only join multicast on necessary interfaces. This solves a but where
