@@ -31,7 +31,7 @@
 
 ArpService::ServiceMap ArpService::services;
 
-void ArpService::addFakeArp (int interface, const IpAddress &address, const std::uint8_t *mac)
+bool ArpService::addFakeArp (int interface, const IpAddress &address, const std::uint8_t *mac)
 {
 	ServiceMap::const_iterator it = services.find(interface);
 	ArpService *service;
@@ -41,7 +41,7 @@ void ArpService::addFakeArp (int interface, const IpAddress &address, const std:
 		if (service->m_socket == -1)
 		{
 			delete service;
-			return;
+			return false;
 		}
 		services[interface] = service;
 	}
@@ -51,13 +51,15 @@ void ArpService::addFakeArp (int interface, const IpAddress &address, const std:
 	std::uint8_t *tmp = new std::uint8_t[6];
 	std::memcpy(tmp, mac, 6);
 	service->m_addresses[address] = tmp;
+
+	return true;
 }
 
-void ArpService::removeFakeArp (int interface, const IpAddress &address)
+bool ArpService::removeFakeArp (int interface, const IpAddress &address)
 {
 	ServiceMap::iterator it = services.find(interface);
 	if (it == services.end())
-		return;
+		return false;
 
 	ArpService *service = it->second;
 
@@ -72,6 +74,8 @@ void ArpService::removeFakeArp (int interface, const IpAddress &address)
 			services.erase(it);
 		}
 	}
+
+	return true;
 }
 
 ArpService::ArpService (int interface)

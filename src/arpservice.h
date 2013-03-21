@@ -24,8 +24,8 @@
 class ArpService
 {
 	public:
-		static void addFakeArp (int interface, const IpAddress &address, const std::uint8_t *mac);
-		static void removeFakeArp (int interface, const IpAddress &address);
+		static bool addFakeArp (int interface, const IpAddress &address, const std::uint8_t *mac);
+		static bool removeFakeArp (int interface, const IpAddress &address);
 
 	private:
 		ArpService (int interface);

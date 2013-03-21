@@ -20,6 +20,7 @@
 #include "netlink.h"
 #include "vrrpservice.h"
 #include "vrrpsocket.h"
+#include "arpservice.h"
 
 #include <algorithm>
 
@@ -36,7 +37,7 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_advertisementInterval(100),
 	m_masterAdvertisementInterval(m_advertisementInterval),
 	m_preemptMode(true),
-	m_acceptMode(true),
+	m_acceptMode(family == AF_INET6 ? true : false),
 	m_masterDownTimer(timerCallback, this),
 	m_advertisementTimer(timerCallback, this),
 	m_state(Initialize),
@@ -368,16 +369,32 @@ bool VrrpService::setDefaultMac ()
 bool VrrpService::addIpAddresses ()
 {
 	bool ret = true;
-	for (IpSubnetSet::const_iterator addr = m_subnets.begin(); addr != m_subnets.end(); ++addr)
-		ret &= (Netlink::addIpAddress(m_outputInterface, *addr));
+	if (m_acceptMode)
+	{
+		for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
+			ret &= (Netlink::addIpAddress(m_outputInterface, *subnet));
+	}
+	else
+	{
+		for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
+			ret &= ArpService::addFakeArp(m_interface, subnet->address(), m_mac);
+	}
 	return ret;
 }
 
 bool VrrpService::removeIpAddresses ()
 {
 	bool ret = true;
-	for (IpSubnetSet::const_iterator addr = m_subnets.begin(); addr != m_subnets.end(); ++addr)
-		ret &= (Netlink::removeIpAddress(m_outputInterface, *addr));
+	if (m_acceptMode)
+	{
+		for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
+			ret &= (Netlink::removeIpAddress(m_outputInterface, *subnet));
+	}
+	else
+	{
+		for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
+			ret &= ArpService::removeFakeArp(m_interface, subnet->address());
+	}
 	return ret;
 }
 

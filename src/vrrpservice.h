@@ -144,9 +144,15 @@ class VrrpService : private VrrpEventListener
 			return m_acceptMode;
 		}
 
-		inline void setAcceptMode (bool enabled)
+		inline bool setAcceptMode (bool enabled)
 		{
-			m_acceptMode = enabled;
+			if (m_state == Initialize && m_family == AF_INET)
+			{
+				m_acceptMode = enabled;
+				return true;
+			}
+			else
+				return false;
 		}
 
 		bool addIpAddress (const IpSubnet &subnet);
