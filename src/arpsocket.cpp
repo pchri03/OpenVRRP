@@ -29,6 +29,7 @@
 #include <net/ethernet.h>
 #include <netpacket/packet.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 bool ArpSocket::sendGratuitiousArp (unsigned int interface, const IpAddress &address)
 {

@@ -29,6 +29,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
 #include <sys/ioctl.h>
+include <unistd.h>
 
 int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family, IpAddress *address, int *interface)
 {
