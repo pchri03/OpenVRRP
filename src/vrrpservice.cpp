@@ -36,7 +36,7 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_advertisementInterval(100),
 	m_masterAdvertisementInterval(m_advertisementInterval),
 	m_preemptMode(true),
-	m_acceptMode(false),
+	m_acceptMode(true),
 	m_masterDownTimer(timerCallback, this),
 	m_advertisementTimer(timerCallback, this),
 	m_state(Initialize),

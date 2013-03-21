@@ -465,6 +465,8 @@ void TelnetSession::onSetRouterCommand (const std::vector<char *> &argv)
 			}
 			else if (std::strcmp(argv[offset], "accept") == 0)
 			{
+				SEND_RESP("Not supported\n");
+				/*
 				if (argv.size() > offset + 1)
 				{
 					for (int i = 0; i != sizeof(trueValues) / sizeof(trueValues[0]); ++i)
@@ -487,6 +489,7 @@ void TelnetSession::onSetRouterCommand (const std::vector<char *> &argv)
 				}
 
 				SEND_RESP(RESP_SET_ROUTER_ACCEPT);
+				*/
 				return;
 			}
 			else if (std::strcmp(argv[offset], "preempt") == 0)
