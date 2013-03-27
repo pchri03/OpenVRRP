@@ -808,7 +808,9 @@ void TelnetSession::showRouter (const VrrpService *service)
 	sendFormatted("Virtual router %hhu on interface %s (%s)%s\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6", service->enabled() ? "" : " [DISABLED]");
 	sendFormatted(" Master IP Address:      %s\n", service->masterIpAddress().toString().c_str());
 	sendFormatted(" Primary IP Address:     %s%s\n", service->primaryIpAddress().toString().c_str(), service->hasAutoPrimaryIpAddress() ? "" : " (Forced)");
-	sendFormatted(" Virtual MAC:            00:00:5e:00:%02X:%02hhX\n", service->family() == AF_INET ? 1 : 2, (unsigned char)service->virtualRouterId());
+
+	const std::uint8_t *mac = service->mac();
+	sendFormatted(" Virtual MAC:            %02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
 	static const char *states[] = {"Initialize", "Backup", "Master"};
 	sendFormatted(" Status:                 %s\n", states[service->state() - 1]);

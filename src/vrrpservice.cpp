@@ -24,7 +24,10 @@
 #include "scriptrunner.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
 
+#include <unistd.h>
 #include <syslog.h>
 #include <net/if.h>
 #include <linux/ethtool.h>
@@ -86,6 +89,21 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 		m_outputInterface = Netlink::addMacvlanInterface(m_interface, m_mac, name);
 		if (m_outputInterface < 0)
 		{
+			// We could not create a MACVLAN interface, so the MAC we're using is not the VRRP MAC
+			int s = socket(AF_INET, SOCK_DGRAM, 0);
+
+			ifreq req;
+			if_indextoname(interface, req.ifr_name);
+			if (ioctl(s, SIOCGIFHWADDR, &req) == -1)
+			{
+				syslog(LOG_WARNING, "Failed to get MAC address of VRRP interface: %s", std::strerror(errno));
+			}
+			else
+			{
+				std::memcpy(m_mac, req.ifr_hwaddr.sa_data, sizeof(m_mac));
+			}
+			close(s);
+
 			m_outputInterface = m_interface;
 		}
 
@@ -126,6 +144,11 @@ int VrrpService::family () const
 std::uint_fast8_t VrrpService::virtualRouterId () const
 {
 	return m_virtualRouterId;
+}
+
+const std::uint8_t *VrrpService::mac () const
+{
+	return m_mac;
 }
 
 IpAddress VrrpService::primaryIpAddress () const

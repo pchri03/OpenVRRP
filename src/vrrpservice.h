@@ -98,6 +98,12 @@ class VrrpService : private VrrpEventListener
 		std::uint_fast8_t virtualRouterId () const;
 
 		/**
+		  * Get the MAC address of the service
+		  * @return 48-bit MAC address
+		  */
+		const std::uint8_t *mac () const;
+
+		/**
  		  * Set the primary IP address of this VRRP router
 		  *
 		  * The primary IP address is the address used when sending out VRRP
