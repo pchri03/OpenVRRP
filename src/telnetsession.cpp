@@ -51,6 +51,8 @@
 #define RESP_SET_ROUTER_ACCEPT		"set router INTF VRID [ipv6] accept BOOL\n"
 #define RESP_SET_ROUTER_PREEMPT		"set router INTF VRID [ipv6] preempt BOOL\n"
 #define RESP_SET_ROUTER_STATUS		"set router INTF VRID [ipv6] status [master|slave]\n"
+#define RESP_SET_ROUTER_MASTER_CMD	"set router INTF VRID [ipv6] master command COMMAND\n"
+#define RESP_SET_ROUTER_BACKUP_CMD	"set router INTF VRID [ipv6] backup command COMMAND\n"
 #define RESP_ENABLE_ROUTER			"enable router INTF VRID [ipv6]\n"
 #define RESP_DISABLE_ROUTER			"disable router INTF VRID [ipv6]\n"
 #define RESP_SHOW_ROUTER			"show router [INTF] [VRID] [ipv6] [stats]\n"
@@ -68,7 +70,9 @@
 									RESP_SET_ROUTER_PREEMPT \
 									RESP_SET_ROUTER_PRIMARY \
 									RESP_SET_ROUTER_PRIORITY \
-									RESP_SET_ROUTER_STATUS
+									RESP_SET_ROUTER_STATUS \
+									RESP_SET_ROUTER_MASTER_CMD \
+									RESP_SET_ROUTER_BACKUP_CMD
 
 #define RESP_SET					RESP_SET_ROUTER
 
@@ -516,6 +520,35 @@ void TelnetSession::onSetRouterCommand (const std::vector<char *> &argv)
 				return;
 
 			}
+			else if (std::strcmp(argv[offset], "master") == 0 || std::strcmp(argv[offset], "backup") == 0)
+			{
+				if (argv.size() > offset + 1 && std::strcmp(argv[offset + 1], "command") == 0)
+				{
+					std::string command;
+					for (int i = offset + 2; i != argv.size(); ++i)
+					{
+						if (i != offset + 2)
+							command += ' ';
+						command += argv[i];
+					}
+
+					if (std::strcmp(argv[offset], "master") == 0)
+						service->setMasterCommand(command);
+					else // if (std::strcmp(argv[offset], "backup") == 0)
+						service->setBackupCommand(command);
+					return;
+				}
+				else if (std::strcmp(argv[offset], "master") == 0)
+				{
+					SEND_RESP(RESP_SET_ROUTER_MASTER_CMD);
+					return;
+				}
+				else // if (std::strcmp(argv[offset], "backup") == 0)
+				{
+					SEND_RESP(RESP_SET_ROUTER_BACKUP_CMD);
+					return;
+				}
+			}
 			else if (std::strcmp(argv[offset], "status") == 0)
 			{
 				// TODO
@@ -774,7 +807,7 @@ void TelnetSession::showRouter (const VrrpService *service)
 	char tmp[IFNAMSIZ];
 	sendFormatted("Virtual router %hhu on interface %s (%s)%s\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6", service->enabled() ? "" : " [DISABLED]");
 	sendFormatted(" Master IP Address:      %s\n", service->masterIpAddress().toString().c_str());
-	sendFormatted(" Primary IP Address:     %s\n", service->primaryIpAddress().toString().c_str());
+	sendFormatted(" Primary IP Address:     %s%s\n", service->primaryIpAddress().toString().c_str(), service->hasAutoPrimaryIpAddress() ? "" : " (Forced)");
 	sendFormatted(" Virtual MAC:            00:00:5e:00:%02X:%02hhX\n", service->family() == AF_INET ? 1 : 2, (unsigned char)service->virtualRouterId());
 
 	static const char *states[] = {"Initialize", "Backup", "Master"};
@@ -784,6 +817,8 @@ void TelnetSession::showRouter (const VrrpService *service)
 	sendFormatted(" Advertisement Interval: %u msec\n", (unsigned int)service->advertisementInterval() * 10);
 	sendFormatted(" Preempt Mode:           %s\n", service->preemptMode() ? "Yes" : "No");
 	sendFormatted(" Accept Mode:            %s\n", service->acceptMode() ? "Yes" : "No");
+	sendFormatted(" Master Command:         %s\n", service->masterCommand().c_str());
+	sendFormatted(" Backup Command:         %s\n", service->backupCommand().c_str());
 	SEND_RESP(" Address List:\n");
 
 	const IpSubnetSet set = service->subnets();

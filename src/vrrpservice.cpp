@@ -21,6 +21,7 @@
 #include "vrrpservice.h"
 #include "vrrpsocket.h"
 #include "arpservice.h"
+#include "scriptrunner.h"
 
 #include <algorithm>
 
@@ -34,6 +35,7 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_virtualRouterId(virtualRouterId),
 	m_priority(100),
 	m_primaryIpAddress(Netlink::getPrimaryIpAddress(interface, family)),
+	m_autoPrimaryIpAddress(true),
 	m_advertisementInterval(100),
 	m_masterAdvertisementInterval(m_advertisementInterval),
 	m_preemptMode(true),
@@ -83,7 +85,9 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 		std::sprintf(name, "vrrp.%i.%hhu.%u", interface, virtualRouterId, (family == AF_INET ? 1 : 2));
 		m_outputInterface = Netlink::addMacvlanInterface(m_interface, m_mac, name);
 		if (m_outputInterface < 0)
+		{
 			m_outputInterface = m_interface;
+		}
 
 		m_socket->addEventListener(m_interface, m_virtualRouterId, this);
 	}
@@ -102,6 +106,148 @@ VrrpService::~VrrpService ()
 
 	if (m_socket != 0)
 		m_socket->removeEventListener(m_interface, m_virtualRouterId);
+}
+
+int VrrpService::error () const
+{
+	return m_error;
+}
+
+int VrrpService::interface () const
+{
+	return m_interface;
+}
+
+int VrrpService::family () const
+{
+	return m_family;
+}
+
+std::uint_fast8_t VrrpService::virtualRouterId () const
+{
+	return m_virtualRouterId;
+}
+
+IpAddress VrrpService::primaryIpAddress () const
+{
+	return m_primaryIpAddress;
+}
+
+bool VrrpService::hasAutoPrimaryIpAddress () const
+{
+	return m_autoPrimaryIpAddress;
+}
+
+IpAddress VrrpService::masterIpAddress () const
+{
+	return m_masterIpAddress;
+}
+
+bool VrrpService::setPrimaryIpAddress (const IpAddress &address)
+{
+	if (address.family() == m_family)
+	{
+		m_primaryIpAddress = address;
+		m_autoPrimaryIpAddress = false;
+		return true;
+	}
+	else
+		return false;
+}
+
+void VrrpService::unsetPrimaryIpAddress ()
+{
+	if (!m_autoPrimaryIpAddress)
+	{
+		m_primaryIpAddress = Netlink::getPrimaryIpAddress(m_interface, m_family);
+		m_autoPrimaryIpAddress = false;
+	}
+}
+
+bool VrrpService::setPriority (std::uint_fast8_t priority)
+{
+	if (priority == 0)
+		return false;
+	m_priority = priority;
+}
+
+std::uint_fast8_t VrrpService::priority () const
+{
+	return m_priority;
+}
+
+bool VrrpService::setAdvertisementInterval (unsigned int advertisementInterval)
+{
+	if (advertisementInterval < 1 || advertisementInterval > 4095)
+		return false;
+	m_advertisementInterval = advertisementInterval;
+}
+
+unsigned int VrrpService::advertisementInterval () const
+{
+	return m_advertisementInterval;
+}
+
+unsigned int VrrpService::masterAdvertisementInterval () const
+{
+	return m_masterAdvertisementInterval;
+}
+
+unsigned int VrrpService::skewTime () const
+{
+	return ((256 - m_priority) * m_masterAdvertisementInterval) / 256;
+}
+
+unsigned int VrrpService::masterDownInterval () const
+{
+	return 3 * m_masterAdvertisementInterval + skewTime();
+}
+
+void VrrpService::setPreemptMode (bool enabled)
+{
+	m_preemptMode = enabled;
+}
+
+bool VrrpService::preemptMode () const
+{
+	return m_preemptMode;
+}
+
+void VrrpService::setAcceptMode (bool enabled)
+{
+	if (m_acceptMode == enabled)
+		return;
+
+	if (m_family == AF_INET6)
+		return;
+
+	if (m_state == Master)
+	{
+		// We are master, so we need to move the IP addresses between interfaces and the ARP service
+		if (enabled)
+		{
+			for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
+			{
+				Netlink::addIpAddress(m_outputInterface, *subnet);
+				ArpService::removeFakeArp(m_interface, subnet->address());
+			}
+		}
+		else
+		{
+			for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
+			{
+				ArpService::addFakeArp(m_interface, subnet->address(), m_mac);
+				Netlink::removeIpAddress(m_outputInterface, *subnet);
+			}
+		}
+	}
+
+	m_acceptMode = enabled;
+}
+
+bool VrrpService::acceptMode () const
+{
+	return m_acceptMode;
 }
 
 void VrrpService::timerCallback (Timer *timer, void *userData)
@@ -129,6 +275,86 @@ void VrrpService::disable ()
 		shutdown();
 		m_enabled = false;
 	}
+}
+
+bool VrrpService::enabled () const
+{
+	return m_enabled;
+}
+
+void VrrpService::setMasterCommand (const std::string &command)
+{
+	m_masterCommand = command;
+}
+
+std::string VrrpService::masterCommand () const
+{
+	return m_masterCommand;
+}
+
+void VrrpService::setBackupCommand (const std::string &command)
+{
+	m_backupCommand = command;
+}
+
+std::string VrrpService::backupCommand () const
+{
+	return m_backupCommand;
+}
+
+std::uint_fast32_t VrrpService::statsMasterTransitions () const
+{
+	return m_statsMasterTransitions;
+}
+
+VrrpService::NewMasterReason VrrpService::statsNewMasterReason () const
+{
+	return m_statsNewMasterReason;
+}
+
+std::uint_fast64_t VrrpService::statsRcvdAdvertisements () const
+{
+	return m_statsRcvdAdvertisements;
+}
+
+std::uint_fast64_t VrrpService::statsAdvIntervalErrors () const
+{
+	return m_statsAdvIntervalErrors;
+}
+
+std::uint_fast64_t VrrpService::statsIpTtlErrors () const
+{
+	return m_statsIpTtlErrors;
+}
+
+VrrpService::ProtocolErrorReason VrrpService::statsProtocolErrReason () const
+{
+	return m_statsProtocolErrReason;
+}
+
+std::uint_fast64_t VrrpService::statsRcvdPriZeroPackets () const
+{
+	return m_statsRcvdPriZeroPackets;
+}
+
+std::uint_fast64_t VrrpService::statsSentPriZeroPackets() const
+{
+	return m_statsSentPriZeroPackets;
+}
+
+std::uint_fast64_t VrrpService::statsRcvdInvalidTypePackets () const
+{
+	return m_statsRcvdInvalidTypePackets;
+}
+
+std::uint_fast64_t VrrpService::statsAddressListErrors () const
+{
+	return m_statsAddressListErrors;
+}
+
+std::uint_fast64_t VrrpService::statsPacketLengthErrors () const
+{
+	return m_statsPacketLengthErrors;
 }
 
 void VrrpService::startup ()
@@ -222,6 +448,9 @@ void VrrpService::onIncomingVrrpPacket (
 {
 	++m_statsRcvdAdvertisements;
 	m_statsProtocolErrReason = NoError;
+
+	if (!maxAdvertisementInterval != m_advertisementInterval)
+		++m_statsAdvIntervalErrors;
 
 	if (m_state == Backup)
 	{
@@ -335,6 +564,17 @@ void VrrpService::setState (State state)
 				removeIpAddresses();
 			setDefaultMac();
 		}
+
+		if (state == Backup)
+		{
+			if (m_backupCommand.size() != 0)
+				ScriptRunner::execute(m_backupCommand);
+		}
+		else if (state == Master)
+		{
+			if (m_backupCommand.size() != 0)
+				ScriptRunner::execute(m_masterCommand);
+		}
 	}
 }
 
@@ -413,6 +653,21 @@ bool VrrpService::removeIpAddress (const IpSubnet &subnet)
 	ret |= m_subnets.erase(subnet);
 	ret |= m_addresses.erase(subnet.address());
 	return ret;
+}
+
+const IpSubnetSet &VrrpService::subnets () const
+{
+	return m_subnets;
+}
+
+const IpAddressSet &VrrpService::addresses () const
+{
+	return m_addresses;
+}
+
+VrrpService::State VrrpService::state () const
+{
+	return m_state;
 }
 
 void VrrpService::setProtocolErrorReason (ProtocolErrorReason reason)

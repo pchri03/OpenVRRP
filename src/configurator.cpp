@@ -30,7 +30,7 @@
    Configuration format is as follows:
 
    config {
-	int version;
+	int version; // 2
 	int routerCount;
 	router[routerCount] router;
    }
@@ -45,12 +45,16 @@
 	bool enabled;
 	int flags;
     IpAddress primaryIp; // Only if bit 0 of flags is set
+	string masterCommand;
+	string backupCommand;
 	int addressCount;
 	IpSubnet[addressCount] subnets;
    }
 */	
 
 const char *Configurator::filename = 0;
+
+#define FLAG_HAS_PRIMARY_IP_ADDRESS (1 << 0)
 
 bool Configurator::readConfiguration (const char *filename)
 {
@@ -59,7 +63,7 @@ bool Configurator::readConfiguration (const char *filename)
 		return false;
 
 	int version;
-	if (!readInt(file, version) || version != 1)
+	if (!readInt(file, version) || (version != 1 && version != 2))
 		return false;
 
 	int routerCount;
@@ -80,6 +84,8 @@ bool Configurator::readConfiguration (const char *filename)
 		IpAddress primaryIp;
 		int addressCount;
 		IpSubnetSet subnets;
+		std::string masterCommand;
+		std::string backupCommand;
 
 		// Read data
 		if (
@@ -96,9 +102,15 @@ bool Configurator::readConfiguration (const char *filename)
 			return false;
 		}
 
-		if (flags & 1)
+		if (flags & FLAG_HAS_PRIMARY_IP_ADDRESS)
 		{
 			if (!readIp(file, primaryIp))
+				return false;
+		}
+
+		if (version > 1)
+		{
+			if (!readString(file, masterCommand) || !readString(file, backupCommand))
 				return false;
 		}
 
@@ -160,8 +172,10 @@ bool Configurator::readConfiguration (const char *filename)
 		service->setAdvertisementInterval(interval / 10);
 		service->setAcceptMode(accept);
 		service->setPreemptMode(preempt);
-		if (flags & 1)
+		if (flags & FLAG_HAS_PRIMARY_IP_ADDRESS)
 			service->setPrimaryIpAddress(primaryIp);
+		service->setMasterCommand(masterCommand);
+		service->setBackupCommand(backupCommand);
 		for (IpSubnetSet::const_iterator subnet = subnets.begin(); subnet != subnets.end(); ++subnet)
 		{
 			service->addIpAddress(*subnet);
@@ -200,7 +214,7 @@ bool Configurator::writeConfiguration (const char *filename)
 	if (!file.good())
 		return false;
 
-	if (!writeInt(file, 1))
+	if (!writeInt(file, 2))
 		return false;
 
 	std::vector<VrrpService *> services = Configurator::services();
@@ -214,6 +228,10 @@ bool Configurator::writeConfiguration (const char *filename)
 		char ifname[IFNAMSIZ];
 		if_indextoname(service->interface(), ifname);
 
+		int flags = 0;
+		if (!service->hasAutoPrimaryIpAddress())
+			flags |= FLAG_HAS_PRIMARY_IP_ADDRESS;
+
 		if (
 				!writeString(file, ifname)
 				|| !writeInt(file, service->virtualRouterId())
@@ -222,11 +240,22 @@ bool Configurator::writeConfiguration (const char *filename)
 				|| !writeInt(file, service->advertisementInterval() * 10)
 				|| !writeBoolean(file, service->acceptMode())
 				|| !writeBoolean(file, service->preemptMode())
-				|| !writeBoolean(file, service->enabled()))
+				|| !writeBoolean(file, service->enabled())
+				|| !writeInt(file, flags))
 			return false;
 
-		if (!writeInt(file, 0)) // TODO - Support storing primary ip
+		if (flags & FLAG_HAS_PRIMARY_IP_ADDRESS)
+		{
+			if (!writeIp(file, service->primaryIpAddress()))
+				return false;
+		}
+	
+		if (
+				!writeString(file, service->masterCommand())
+				|| !writeString(file, service->backupCommand()))
+		{
 			return false;
+		}
 
 		const IpSubnetSet &subnets = service->subnets();
 		if (!writeInt(file, subnets.size()))
