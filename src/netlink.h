@@ -55,6 +55,7 @@ class Netlink
 	private:
 		static bool modifyIpAddress (int interface, const IpSubnet &ip, bool add);
 		static int sendNetlinkPacket (const void *packet, unsigned int size, int family = AF_UNSPEC, IpAddress *address = 0, int *interface = 0);
+		static bool setIpConfiguration (const char *interface, const char *parameter, const char *value);
 
 		class Attribute
 		{

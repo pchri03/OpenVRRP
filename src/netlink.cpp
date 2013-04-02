@@ -266,7 +266,38 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 	int newInterface = 0;
 	int err = sendNetlinkPacket(buffer.data(), buffer.size(), AF_UNSPEC, 0, &newInterface);
 	if (err >= 0)
+	{
+		// arp_filter = 1
+		// Allows you to have multiple network interfaces on the same
+		// subnet, and have the ARPs for each interface be answered
+		// based on whether or not the kernel would route a packet from
+		// the ARP'd IP out that interface (therefore you must use source
+		// based routing for the to work). In other words it allows control
+		// of which card (usually 1) will respond to an arp request.
+		setIpConfiguration(name, "arp_filter", "1");
+
+		// arp_announce = 1
+		// Try to avoid local addresses that are not in the target's
+		// subnet for this interface. This mode is useful when target
+		// hosts reachable via this interface require the source IP
+		// address in ARP requests to be part of their logical network
+		// configured on the receiving interface. When we generate the
+		// request we will check all our subnets that include the
+		// target IP and will preserve the source address if it is from
+		// such subnet. If there is no such subnet we select source
+		// address according to the rules for level 2
+		setIpConfiguration(name, "arp_announce", "1");
+
+		// arp_ignore = 1
+		// reply only if the target IP address is local address
+		// configured on the incoming interface
+		setIpConfiguration(name, "arp_ignore", "1");
+
+		char originalInterface[IFNAMSIZ];
+		setIpConfiguration(if_indextoname(interface, originalInterface), "arp_ignore", "1");
+
 		return newInterface;
+	}
 	else
 	{
 		syslog(LOG_WARNING, "Netlink: Error creating macvlan interface: %s", std::strerror(0 - err));
@@ -493,4 +524,20 @@ bool Netlink::toggleInterface (int interface, bool up)
 	close(s);
 
 	return true;
+}
+
+bool Netlink::setIpConfiguration (const char *interface, const char *parameter, const char *value)
+{
+	std::string path("/proc/sys/net/ipv4/conf/");
+	path.append(interface).append("/").append(parameter);
+
+	std::ofstream file(path.c_str());
+	if (file.good())
+	{
+		file << value;
+		file.close();
+		return true;
+	}
+	else
+		return false;
 }
