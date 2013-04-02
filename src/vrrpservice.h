@@ -38,9 +38,11 @@ class VrrpService : private VrrpEventListener
 	public:
 		enum State
 		{
-			Initialize = 1,
-			Backup = 2,
-			Master = 3
+			Disabled = 0, // VRRPV3-MIB::vrrpv3OperationsStatus = initialize(1), VRRPV3-MIB::vrrpv3OperationsRowStatus = notInService(2)
+			LinkDown, // VRRPV3-MIB::vrrpv3OperationsStatus = initialize(1), VRRPV3-MIB::vrrpv3OperationsRowStatus = notReady(3)
+			Initialize, // VRRPV3-MIB::vrrpv3OperationsStatus = initialize(1), VRRPV3-MIB::vrrpv3OperationsRowStatus = active(1)
+			Backup, // VRRPV3-MIB::vrrpv3OperationsStatus = backup(2), VRRPV3-MIB::vrrpv3OperationsRowStatus = active(1)
+			Master // VRRRPV3-MIB::vrrpv3OperationsStatus = master(3), VRRPV3-MIB::vrrpv3OperationsRowStatus = active(1)
 		};
 
 		enum NewMasterReason

@@ -805,15 +805,15 @@ void TelnetSession::sendFormatted (const char *templ, ...)
 void TelnetSession::showRouter (const VrrpService *service)
 {
 	char tmp[IFNAMSIZ];
-	sendFormatted("Virtual router %hhu on interface %s (%s)%s\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6", service->enabled() ? "" : " [DISABLED]");
+	sendFormatted("Virtual router %hhu on interface %s (%s)\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6");
 	sendFormatted(" Master IP Address:      %s\n", service->masterIpAddress().toString().c_str());
 	sendFormatted(" Primary IP Address:     %s%s\n", service->primaryIpAddress().toString().c_str(), service->hasAutoPrimaryIpAddress() ? "" : " (Forced)");
 
 	const std::uint8_t *mac = service->mac();
 	sendFormatted(" Virtual MAC:            %02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
-	static const char *states[] = {"Initialize", "Backup", "Master"};
-	sendFormatted(" Status:                 %s\n", states[service->state() - 1]);
+	static const char *states[] = {"Disabled", "Link Down", "Initialize", "Backup", "Master"};
+	sendFormatted(" Status:                 %s\n", states[service->state()]);
 
 	sendFormatted(" Priority:               %u\n", (unsigned int)service->priority());
 	sendFormatted(" Advertisement Interval: %u msec\n", (unsigned int)service->advertisementInterval() * 10);
@@ -833,7 +833,7 @@ void TelnetSession::showRouter (const VrrpService *service)
 void TelnetSession::showRouterStats (const VrrpService *service)
 {
 	char tmp[IFNAMSIZ];
-	sendFormatted("Virtual router %hhu on interface %s (%s)%s\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6", service->enabled() ? "" : " [DISABLE]");
+	sendFormatted("Virtual router %hhu on interface %s (%s)\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6");
 	sendFormatted(" Master Transitions:                    %u\n", service->statsMasterTransitions());
 
 	static const char *reasons[] = {"Not master", "Priority", "Preempted", "Master not responding"};

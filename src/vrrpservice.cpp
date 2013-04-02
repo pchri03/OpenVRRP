@@ -45,7 +45,7 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_acceptMode(family == AF_INET6 ? true : false),
 	m_masterDownTimer(timerCallback, this),
 	m_advertisementTimer(timerCallback, this),
-	m_state(Initialize),
+	m_state(Disabled),
 	m_family(family),
 	m_interface(interface),
 	m_outputInterface(interface),
@@ -64,9 +64,7 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_statsAddressListErrors(0),
 	m_statsPacketLengthErrors(0),
 
-	m_pendingNewMasterReason(MasterNotResponding),
-
-	m_enabled(false)
+	m_pendingNewMasterReason(MasterNotResponding)
 {
 	if (m_family == AF_INET)
 		m_name = "VRRP IPv4 Service";
@@ -284,25 +282,25 @@ void VrrpService::timerCallback (Timer *timer, void *userData)
 
 void VrrpService::enable ()
 {
-	if (!m_enabled)
+	if (m_state == Disabled)
 	{
-		m_enabled = true;
+		m_state = Initialize;
 		startup();
 	}
 }
 
 void VrrpService::disable ()
 {
-	if (m_enabled)
+	if (m_state != Disabled)
 	{
 		shutdown();
-		m_enabled = false;
+		m_state = Disabled;
 	}
 }
 
 bool VrrpService::enabled () const
 {
-	return m_enabled;
+	return m_state != Disabled;
 }
 
 void VrrpService::setMasterCommand (const std::string &command)
@@ -563,16 +561,16 @@ void VrrpService::setState (State state)
 {
 	if (m_state != state)
 	{
-		static const char *states[] = {"Initialize", "Backup", "Master"};
+		static const char *states[] = {"Disabled", "LinkDown", "Initialize", "Backup", "Master"};
 		State oldState = m_state;
 		m_state = state;
 		if (m_state == Master)
 		{
 			static const char *reasons[] = {"NotMaster", "Priority", "Preempted", "MasterNotResponding"};
-			syslog(LOG_INFO, "%s (Router %u, Interface %u): Changed state to %s (Reason: %s)", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface, states[m_state - 1], reasons[m_pendingNewMasterReason - 1]);
+			syslog(LOG_INFO, "%s (Router %u, Interface %u): Changed state to %s (Reason: %s)", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface, states[m_state], reasons[m_pendingNewMasterReason - 1]);
 		}
 		else
-			syslog(LOG_INFO, "%s (Router %u, Interface %u): Changed state to %s", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface, states[m_state - 1]);
+			syslog(LOG_INFO, "%s (Router %u, Interface %u): Changed state to %s", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface, states[m_state]);
 		if (m_state == Master)
 		{
 			if (m_outputInterface != m_interface)
