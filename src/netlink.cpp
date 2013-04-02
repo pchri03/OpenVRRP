@@ -191,7 +191,7 @@ bool Netlink::modifyIpAddress (int interface, const IpSubnet &ip, bool add)
 	msg->ifa_family = ip.address().family();
 	msg->ifa_prefixlen = ip.cidr();
 	msg->ifa_flags = 0;
-	msg->ifa_scope = RT_SCOPE_LINK;
+	msg->ifa_scope = RT_SCOPE_UNIVERSE;
 	msg->ifa_index = interface;
 
 	attr.toPacket(buffer.data() + 16 + 8);
