@@ -1,11 +1,12 @@
-all: test-app netlink-test-app
+all: test-app netlink-test-app libnl2-test-app
 
-TESTLINE=./netlink-test-app
+TESTAPP=libnl2-test-app
+TESTLINE=./$(TESTAPP)
 
-test: netlink-test-app
+test: $(TESTAPP)
 	sudo $(TESTLINE)
 
-debug: netlink-test-app
+debug: $(TESTAPP)
 	sudo gdb $(TESTLINE)
 
 test-app: test.cpp
@@ -13,5 +14,8 @@ test-app: test.cpp
 
 netlink-test-app: netlink-test.cpp
 	g++ -Wall -W -g -o netlink-test-app netlink-test.cpp
+
+libnl2-test-app: libnl2-test.cpp ../src/mainloop.cpp
+	g++ -Wall -W -g -o libnl2-test-app -I ../src $^ -lnl -lnl-route
 
 .PHONY: test all
