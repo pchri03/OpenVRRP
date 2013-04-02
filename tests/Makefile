@@ -16,6 +16,6 @@ netlink-test-app: netlink-test.cpp
 	g++ -Wall -W -g -o netlink-test-app netlink-test.cpp
 
 libnl2-test-app: libnl2-test.cpp ../src/mainloop.cpp
-	g++ -Wall -W -g -o libnl2-test-app -I ../src $^ -lnl -lnl-route
+	g++ -Wall -W -g -std=c++0x -o libnl2-test-app -I ../src $^ -lnl -lnl-route
 
 .PHONY: test all
