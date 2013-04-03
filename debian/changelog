@@ -1,3 +1,10 @@
+openvrrp (0.2.4-1) unstable; urgency=low
+
+  * Actually add/remove IP addresses if the address list is modifying while being master
+  * Handle setting priority to/from 255 while being master and with accept mode off
+
+ -- Peter Christensen <pch@ordbogen.com>  Wed,   3 Apr 2013 16:28:31 +0200
+
 openvrrp (0.2.3-1) unstable; urgency=low
 
   * Fixed bug where VRRP ignored the incoming packets from other VRRP routers
