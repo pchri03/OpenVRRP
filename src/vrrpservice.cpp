@@ -193,7 +193,35 @@ bool VrrpService::setPriority (std::uint_fast8_t priority)
 {
 	if (priority == 0)
 		return false;
+
+	if (m_state == Master && !m_acceptMode)
+	{
+		if (m_priority != 255 && priority == 255)
+		{
+			// We are going from non-owner in non-accept mode to the address owner, so we must move
+			// IP addresses from ARP service to interfaces
+			for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
+			{
+				Netlink::addIpAddress(m_outputInterface, *subnet);
+				ArpService::removeFakeArp(m_interface, subnet->address());
+			}
+
+		}
+		else if (m_priority == 255 && priority != 255)
+		{
+			// We are going from a being address owner to a non-owner in non-accept mode, so we must move
+			// IP addresses from interfaces to ARP service
+			for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
+			{
+				ArpService::addFakeArp(m_interface, subnet->address(), m_mac);
+				Netlink::removeIpAddress(m_outputInterface, *subnet);
+			}
+		}
+	}
+
 	m_priority = priority;
+
+	return true;
 }
 
 std::uint_fast8_t VrrpService::priority () const
@@ -635,7 +663,7 @@ bool VrrpService::setDefaultMac ()
 bool VrrpService::addIpAddresses ()
 {
 	bool ret = true;
-	if (m_acceptMode)
+	if (m_acceptMode || m_priority == 255)
 	{
 		for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
 			ret &= (Netlink::addIpAddress(m_outputInterface, *subnet));
@@ -651,7 +679,7 @@ bool VrrpService::addIpAddresses ()
 bool VrrpService::removeIpAddresses ()
 {
 	bool ret = true;
-	if (m_acceptMode)
+	if (m_acceptMode || m_priority == 255)
 	{
 		for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
 			ret &= (Netlink::removeIpAddress(m_outputInterface, *subnet));
