@@ -102,11 +102,11 @@ bool Netlink::modifyIpAddress (int interface, const IpSubnet &ip, bool add)
 	nl_addr *local = nl_addr_build(ip.address().family(), const_cast<void *>(ip.address().data()), ip.address().size());
 
 	rtnl_addr *addr = rtnl_addr_alloc();
-	rtnl_addr_set_ifindex(addr, interface);
-	rtnl_addr_set_prefixlen(addr, ip.cidr());
 	rtnl_addr_set_scope(addr, RT_SCOPE_UNIVERSE);
+	rtnl_addr_set_ifindex(addr, interface);
 	rtnl_addr_set_family(addr, ip.address().family());
 	rtnl_addr_set_local(addr, local);
+	rtnl_addr_set_prefixlen(addr, ip.cidr());
 
 	int err;
 	if (add)
@@ -335,7 +335,7 @@ bool Netlink::toggleInterface (int interface, bool up)
 	infomsg.ifi_family = AF_UNSPEC;
 	infomsg.ifi_type = ARPHRD_ETHER;
 	infomsg.ifi_index = interface;
-	infomsg.ifi_flags = IFF_UP;
+	infomsg.ifi_change = IFF_UP;
 	infomsg.ifi_flags = (up ? IFF_UP : 0);
 
 	nlmsg_append(msg, &infomsg, sizeof(infomsg), NLMSG_ALIGNTO);
