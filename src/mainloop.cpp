@@ -19,6 +19,7 @@
 #include "mainloop.h"
 
 #include <cerrno>
+#include <cstring>
 
 #include <string.h>
 #include <unistd.h>
@@ -30,6 +31,7 @@ int MainLoop::m_fd = -1;
 MainLoop::MonitorMap MainLoop::m_monitors;
 MainLoop::TimerMap MainLoop::m_timers;
 bool MainLoop::m_aborted = false;
+int MainLoop::m_abortSignal = 0;
 
 void MainLoop::init ()
 {
@@ -52,7 +54,7 @@ bool MainLoop::addMonitor (int fd, Callback *callback, void *userData)
 
 	if (epoll_ctl(m_fd, EPOLL_CTL_ADD, fd, &event) == -1)
 	{
-		syslog(LOG_ERR, "MainLoop: Error adding file to main loop monitor: %m");
+		syslog(LOG_ERR, "MainLoop: Error adding file to main loop monitor: %s", std::strerror(errno));
 		delete monitor;
 		return false;
 	}
@@ -79,7 +81,7 @@ bool MainLoop::removeMonitor (int fd)
 	event.events = EPOLLIN;
 	event.data.ptr = it->second;
 	if (epoll_ctl(m_fd, EPOLL_CTL_DEL, fd, &event) == -1)
-		syslog(LOG_ERR, "MainLoop: Error removing file from main loop monitor: %m");
+		syslog(LOG_ERR, "MainLoop: Error removing file from main loop monitor: %s", std::strerror(errno));
 
 	delete it->second;
 	m_monitors.erase(it);
@@ -89,11 +91,18 @@ bool MainLoop::removeMonitor (int fd)
 
 bool MainLoop::run ()
 {
+	bool ret = true;
+
 	m_aborted = false;
-	signal(SIGINT, signalCallback);
-	signal(SIGTERM, signalCallback);
-	signal(SIGQUIT, signalCallback);
-	signal(SIGHUP, signalCallback);
+
+	sighandler_t intHandler = signal(SIGINT, signalCallback);
+	sighandler_t termHandler = signal(SIGTERM, signalCallback);
+	sighandler_t quitHandler = signal(SIGQUIT, signalCallback);
+	sighandler_t hupHandler = signal(SIGHUP, SIG_IGN);
+	sighandler_t usr1Handler = signal(SIGUSR1, SIG_IGN);
+	sighandler_t usr2Handler = signal(SIGUSR2, SIG_IGN);
+	sighandler_t alarmHandler = signal(SIGALRM, SIG_IGN);
+
 	while (m_monitors.size() > 0 && !m_aborted)
 	{
 		struct epoll_event events[16];
@@ -103,11 +112,12 @@ bool MainLoop::run ()
 		{
 			if (errno != EINTR)
 			{
-				syslog(LOG_ERR, "MainLoop: epoll_wait failed: %m");
-				return false;
+				syslog(LOG_ERR, "MainLoop: epoll_wait failed: %s", std::strerror(errno));
+				ret = false;
+				break;
 			}
 			else
-				syslog(LOG_DEBUG, "MainLoop: epoll_wait was interrupted");
+				syslog(LOG_NOTICE, "MainLoop: epoll_wait was interrupted by signal %s", strsignal(m_abortSignal));
 		}
 		else
 		{
@@ -119,12 +129,20 @@ bool MainLoop::run ()
 		}
 	}
 
-	return true;
+	signal(SIGINT, intHandler);
+	signal(SIGTERM, termHandler);
+	signal(SIGQUIT, quitHandler);
+	signal(SIGHUP, hupHandler);
+	signal(SIGUSR1, usr1Handler);
+	signal(SIGUSR2, usr2Handler);
+	signal(SIGALRM, alarmHandler);
+
+	return ret;
 }
 
 void MainLoop::signalCallback (int signum)
 {
-	syslog(LOG_DEBUG, "Caught signal %s", strsignal(signum));
+	m_abortSignal = signum;
 	m_aborted = true;
 	signal(signum, SIG_IGN);
 }

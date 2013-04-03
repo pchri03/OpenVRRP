@@ -57,6 +57,7 @@ class MainLoop
 		static MonitorMap m_monitors;
 		static TimerMap m_timers;
 		static bool m_aborted;
+		static int m_abortSignal;
 };
 
 #endif
