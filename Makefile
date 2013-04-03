@@ -8,7 +8,7 @@ EXTRA_LDFLAGS=
 all: $(TARGET)
 
 $(TARGET): $(OFILES)
-	$(CXX) $(LDFLAGS) $(EXTRA_LDFLAGS) -o $(TARGET) $(OFILES)
+	$(CXX) $(LDFLAGS) $(EXTRA_LDFLAGS) -o $(TARGET) $(OFILES) -lnl -lnl-route
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(EXTRA_CXXFLAGS) -c -o $@ $^

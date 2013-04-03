@@ -30,9 +30,14 @@
 
 typedef std::map<int,std::string> InterfaceList;
 
+struct nl_msg;
+struct nl_sock;
+
 class Netlink
 {
 	public:
+		typedef void (InterfaceCallback)(int interface, bool linkIsUp, void *userData);
+
 		static int addMacvlanInterface (int interface, const std::uint8_t *macAddress, const char *name);
 		static bool removeInterface (int interface);
 		static bool setMac (int interface, const std::uint8_t *macAddress);
@@ -52,10 +57,24 @@ class Netlink
 
 		static InterfaceList interfaces ();
 
+		static bool addInterfaceMonitor (int interface, InterfaceCallback *callback, void *userData);
+		static bool removeInterfaceMonitor (int interface, InterfaceCallback *callback, void *userData);
+
 	private:
+		typedef std::pair<InterfaceCallback*, void *> CallbackData;
+		typedef std::set<CallbackData> CallbackDataSet;
+		typedef std::map<int,CallbackDataSet> CallbackMap;
+
 		static bool modifyIpAddress (int interface, const IpSubnet &ip, bool add);
 		static int sendNetlinkPacket (const void *packet, unsigned int size, int family = AF_UNSPEC, IpAddress *address = 0, int *interface = 0);
 		static bool setIpConfiguration (const char *interface, const char *parameter, const char *value);
+
+		static void nlSocketCallback (int fd, void *userData);
+		static int nlMessageCallback (nl_msg *msg, void *userData);
+
+	private:
+		static CallbackMap callbacks;
+		static nl_sock *sock;
 
 		class Attribute
 		{

@@ -106,6 +106,8 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 		}
 
 		m_socket->addEventListener(m_interface, m_virtualRouterId, this);
+
+		Netlink::addInterfaceMonitor(m_interface, interfaceCallback, this);
 	}
 	else
 		m_error = 1;
@@ -117,6 +119,8 @@ VrrpService::~VrrpService ()
 
 	if (m_outputInterface != m_interface)
 		Netlink::removeInterface(m_outputInterface);
+
+	Netlink::removeInterfaceMonitor(m_interface, interfaceCallback, this);
 
 	m_socket->removeInterface(m_interface);
 
@@ -728,5 +732,25 @@ void VrrpService::onIncomingVrrpError (unsigned int interface, std::uint_fast8_t
 		case VrrpEventListener::PacketLengthError:
 			++m_statsPacketLengthErrors;
 			break;
+	}
+}
+
+void VrrpService::interfaceCallback (int interface, bool isUp, void *userData)
+{
+	VrrpService *service = reinterpret_cast<VrrpService *>(userData);
+	if (isUp)
+	{
+		syslog(LOG_WARNING, "%s (Router %u, Interface %u): Link is up", service->m_name, (int)service->m_virtualRouterId, interface);
+		if (service->state() == LinkDown)
+			service->startup();
+	}
+	else
+	{
+		syslog(LOG_WARNING, "%s (Router %u, Interface %u): Link is down", service->m_name, (int)service->m_virtualRouterId, interface);
+		if (service->state() != Disabled)
+		{
+			service->shutdown();
+			service->setState(LinkDown);
+		}
 	}
 }

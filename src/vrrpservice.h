@@ -452,6 +452,7 @@ class VrrpService : private VrrpEventListener
 		void setProtocolErrorReason (ProtocolErrorReason reason);
 
 		static void timerCallback (Timer *timer, void *userData);
+		static void interfaceCallback (int interface, bool isUp, void *userData);
 
 	private:
 		std::uint_fast8_t m_virtualRouterId;

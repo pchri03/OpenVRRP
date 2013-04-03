@@ -17,6 +17,7 @@
  */
 
 #include "netlink.h"
+#include "mainloop.h"
 
 #include <cstring>
 #include <cstdio>
@@ -30,6 +31,9 @@
 #include <linux/sockios.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+
+#include <netlink/netlink.h>
+#include <netlink/route/link.h>
 
 int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family, IpAddress *address, int *interface)
 {
@@ -541,3 +545,112 @@ bool Netlink::setIpConfiguration (const char *interface, const char *parameter, 
 	else
 		return false;
 }
+
+Netlink::CallbackMap Netlink::callbacks;
+nl_sock *Netlink::sock = 0;
+
+bool Netlink::addInterfaceMonitor (int interface, InterfaceCallback *callback, void *userData)
+{
+	CallbackData data(callback, userData);
+
+	// Check if the callback already exists
+	CallbackMap::iterator it = callbacks.find(interface);
+	if (it == callbacks.end())
+	{
+		std::pair<CallbackMap::iterator,bool> ret = callbacks.insert(CallbackMap::value_type(interface, CallbackDataSet()));
+		if (!ret.second)
+			return false;
+		else
+			it = ret.first;
+	}
+	else
+	{
+		if (it->second.find(data) != it->second.end())
+			return false;
+		else
+		{
+			it->second.insert(data);
+			return true;
+		}
+	}
+
+	if (sock == 0)
+	{
+		sock = nl_socket_alloc();
+
+		int ret = nl_connect(sock, NETLINK_ROUTE);
+		if (ret != 0)
+		{
+			syslog(LOG_ERR, "Error creating NETLINK_ROUTE netlink socket: %i", ret);
+
+			callbacks.erase(it);
+			return false;
+		}
+
+		nl_socket_set_nonblocking(sock);
+		nl_socket_modify_cb(sock, NL_CB_MSG_IN, NL_CB_CUSTOM, nlMessageCallback, sock);
+		nl_socket_add_membership(sock, RTMGRP_LINK);
+
+		MainLoop::addMonitor(nl_socket_get_fd(sock), nlSocketCallback, sock);
+	}
+
+	it->second.insert(data);
+	return true;
+}
+
+bool Netlink::removeInterfaceMonitor (int interface, InterfaceCallback *callback, void *userData)
+{
+	CallbackData data(callback, userData);
+
+	// Check if the callback already exists
+	CallbackMap::iterator it = callbacks.find(interface);
+	if (it == callbacks.end())
+		return false;
+
+	CallbackDataSet::iterator dataIt = it->second.find(data);
+	if (dataIt == it->second.end())
+		return false;
+
+	it->second.erase(dataIt);
+	if (it->second.size() == 0)
+	{
+		callbacks.erase(it);
+		if (callbacks.size() == 0)
+		{
+			MainLoop::removeMonitor(nl_socket_get_fd(sock));
+			nl_socket_free(sock);
+			sock = 0;
+		}
+	}
+
+	return true;
+}
+
+void Netlink::nlSocketCallback (int, void *userData)
+{
+	nl_sock *sock = reinterpret_cast<nl_sock *>(userData);
+	nl_recvmsgs_default(sock);
+}
+
+int Netlink::nlMessageCallback (nl_msg *msg, void *)
+{
+	nlmsghdr *hdr = nlmsg_hdr(msg);
+	if (hdr->nlmsg_type == RTM_NEWLINK)
+	{
+		const ifinfomsg *msg = reinterpret_cast<const ifinfomsg *>(nlmsg_data(hdr));
+		if ((msg->ifi_change & IFF_UP) == IFF_UP)
+		{
+			CallbackMap::const_iterator interfaceIt = callbacks.find(msg->ifi_index);
+			if (interfaceIt != callbacks.end())
+			{
+				bool isUp = (msg->ifi_flags & IFF_UP) == IFF_UP;
+				for (CallbackDataSet::const_iterator it = interfaceIt->second.begin(); it != interfaceIt->second.end(); ++it)
+				{
+					it->first(msg->ifi_index, isUp, it->second);
+				}
+			}
+		}
+	}
+	return 0;
+}
+
