@@ -698,6 +698,15 @@ bool VrrpService::addIpAddress (const IpSubnet &subnet)
 		return false;
 	m_subnets.insert(subnet);
 	m_addresses.insert(subnet.address());
+
+	if (m_state == Master)
+	{
+		if (m_acceptMode || m_priority == 255)
+			Netlink::addIpAddress(m_outputInterface, subnet);
+		else
+			ArpService::addFakeArp(m_outputInterface, subnet.address(), m_mac);
+	}
+
 	return true;
 }
 
@@ -706,6 +715,15 @@ bool VrrpService::removeIpAddress (const IpSubnet &subnet)
 	bool ret = false;
 	ret |= m_subnets.erase(subnet);
 	ret |= m_addresses.erase(subnet.address());
+
+	if (m_state == Master)
+	{
+		if (m_acceptMode || m_priority == 255)
+			Netlink::removeIpAddress(m_outputInterface, subnet);
+		else
+			ArpService::removeFakeArp(m_outputInterface, subnet.address());
+	}
+
 	return ret;
 }
 
