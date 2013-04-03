@@ -141,7 +141,7 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 	// IFLA_LINKINFO = {
 	//   IFLA_INFO_KIND = macvlan
 	//   IFLA_INFO_DATA {
-	//     IFLA_MACVLAN_MODE = MACVLAN_MODE_PRIVATE
+	//     IFLA_MACVLAN_MODE = MACVLAN_MODE_VEPA
 	//   }
 	// }
 
@@ -162,7 +162,7 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 		nla_put_string(linkinfo, IFLA_INFO_KIND, "macvlan");
 		{
 			nl_msg *infodata = nlmsg_alloc();
-			nla_put_u32(infodata, IFLA_MACVLAN_MODE, MACVLAN_MODE_PRIVATE);
+			nla_put_u32(infodata, IFLA_MACVLAN_MODE, MACVLAN_MODE_VEPA);
 			nla_put_nested(linkinfo, IFLA_INFO_DATA, infodata);
 			nlmsg_free(infodata);
 		}
