@@ -206,7 +206,7 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 	// - Respond to the ARP requests with addresses from other interfaces (arp_filter=0)
 
 	char nameBuffer[IFNAMSIZ];
-	rtnl_link_i2name(cache, interface, nameBuffer, sizeof(nameBuffer))
+	rtnl_link_i2name(cache, interface, nameBuffer, sizeof(nameBuffer));
 	setIpConfiguration(nameBuffer, "arp_ignore", "1");
 	setIpConfiguration(nameBuffer, "arp_announce", "1");
 	setIpConfiguration(nameBuffer, "arp_filter", "1");
