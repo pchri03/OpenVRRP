@@ -1,4 +1,16 @@
-openvrrp (0.1.3-1) unstable; uergency=low
+openvrrp (0.2.0-1) unstable; urgency=low
+
+  * Use libnl2 for netlink operations
+  * Handle when interfaces go up and down
+  * Support triggers
+  * Addresses are now added with host scope
+  * Automatically setup ARP through sysctl when creating macvlan interface
+  * Use the hardware MAC address when macvlan is not available
+  * Added support for accept_mode=false when running IPv4
+
+ -- Peter Christensen <pch@ordbogen.com>  Wed,   3 Apr 2013 10:17:29 +0100
+
+openvrrp (0.1.3-1) unstable; urgency=low
 
   * Fixed netlink parsing
   * Fixed detection of primary IP address
