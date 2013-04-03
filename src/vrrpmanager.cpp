@@ -19,6 +19,8 @@
 #include "vrrpservice.h"
 #include "netlink.h"
 
+#include <syslog.h>
+
 VrrpManager::VrrpServiceMap VrrpManager::m_services;
 
 void VrrpManager::removeVrrpInterfaces ()
@@ -50,11 +52,13 @@ VrrpService *VrrpManager::getService (int interface, std::uint_fast8_t virtualRo
 		VrrpService *service = new VrrpService(interface, family, virtualRouterId);
 		if (service->error() == 0)
 		{
+			syslog(LOG_INFO, "Created %s router with VID %hhu on interface %i", family == AF_INET ? "IPv4" : "IPv6", virtualRouterId, interface);
 			m_services[interface][virtualRouterId][family] = service;
 			return service;
 		}
 		else
 		{
+			syslog(LOG_ERR, "Error creating %s router with VID %hhu on interface %i", family == AF_INET ? "IPv4" : "IPv6", virtualRouterId, interface);
 			delete service;
 			return 0;
 		}

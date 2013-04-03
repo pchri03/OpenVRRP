@@ -115,7 +115,7 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 
 VrrpService::~VrrpService ()
 {
-	shutdown();
+	shutdown(Disabled);
 
 	if (m_outputInterface != m_interface)
 		Netlink::removeInterface(m_outputInterface);
@@ -289,12 +289,9 @@ void VrrpService::enable ()
 	if (m_state == Disabled)
 	{
 		if (Netlink::isInterfaceUp(m_interface))
-		{
-			m_state = Initialize;
 			startup();
-		}
 		else
-			m_state = LinkDown;
+			setState(LinkDown);
 	}
 }
 
@@ -302,8 +299,7 @@ void VrrpService::disable ()
 {
 	if (m_state != Disabled)
 	{
-		shutdown();
-		m_state = Disabled;
+		shutdown(Disabled);
 	}
 }
 
@@ -417,20 +413,20 @@ void VrrpService::startup ()
 	}
 }
 
-void VrrpService::shutdown ()
+void VrrpService::shutdown (State newState)
 {
 	if (state() == Backup)
 	{
 		// We are backup, so just stop our timer and switch to initialize state
 		m_masterDownTimer.stop();
-		setState(Initialize);
+		setState(newState);
 	}
 	else if (state() == Master)
 	{
 		// We are master, so inform everybody that we're leaving
 		m_advertisementTimer.stop();
 		sendAdvertisement(0);
-		setState(Initialize);
+		setState(newState);
 		
 		++m_statsSentPriZeroPackets;
 	}
@@ -570,7 +566,7 @@ void VrrpService::setState (State state)
 {
 	if (m_state != state)
 	{
-		static const char *states[] = {"Disabled", "LinkDown", "Initialize", "Backup", "Master"};
+		static const char *states[] = {"Disabled", "LinkDown", "Backup", "Master"};
 		State oldState = m_state;
 		m_state = state;
 		if (m_state == Master)
@@ -590,7 +586,7 @@ void VrrpService::setState (State state)
 		}
 		else
 		{
-			if (oldState != Initialize)
+			if (oldState == Master)
 				removeIpAddresses();
 			setDefaultMac();
 		}
@@ -745,17 +741,12 @@ void VrrpService::interfaceCallback (int interface, bool isUp, void *userData)
 	VrrpService *service = reinterpret_cast<VrrpService *>(userData);
 	if (isUp)
 	{
-		syslog(LOG_WARNING, "%s (Router %u, Interface %u): Link is up", service->m_name, (int)service->m_virtualRouterId, interface);
 		if (service->state() == LinkDown)
 			service->startup();
 	}
 	else
 	{
-		syslog(LOG_WARNING, "%s (Router %u, Interface %u): Link is down", service->m_name, (int)service->m_virtualRouterId, interface);
 		if (service->state() != Disabled)
-		{
-			service->shutdown();
-			service->setState(LinkDown);
-		}
+			service->shutdown(LinkDown);
 	}
 }

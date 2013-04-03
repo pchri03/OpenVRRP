@@ -812,7 +812,7 @@ void TelnetSession::showRouter (const VrrpService *service)
 	const std::uint8_t *mac = service->mac();
 	sendFormatted(" Virtual MAC:            %02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
-	static const char *states[] = {"Disabled", "Link Down", "Initialize", "Backup", "Master"};
+	static const char *states[] = {"Disabled", "Link Down", "Backup", "Master"};
 	sendFormatted(" Status:                 %s\n", states[service->state()]);
 
 	sendFormatted(" Priority:               %u\n", (unsigned int)service->priority());
