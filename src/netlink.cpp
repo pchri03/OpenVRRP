@@ -197,12 +197,23 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 
 	// Set sysctl parameters
 
-	char nameBuffer[IFNAMSIZ];
-	setIpConfiguration(rtnl_link_i2name(cache, interface, nameBuffer, sizeof(nameBuffer)), "arp_ignore", "1");
+	// Interface are set up so that both interfaces will:
+	// - reply to ARP only if the target IP address is local address configured on the incoming interface (arp_ignore=1)
+	// - try to avoid local addresses that are not in the target's subnet for this interface (arp_announce=1)
+	// The real interface (and ideally all other interfaces) will
+	// - allow to have multiple network interfaces on the same  subnet, and have the ARPs for each interface be answered based on whether or not the kernel would route a packet from the ARP'd IP out that interface (arp_filter=1)
+	// But the MACVLAN interface will
+	// - Respond to the ARP requests with addresses from other interfaces (arp_filter=0)
 
-	setIpConfiguration(name, "arp_filter", "1");
-	setIpConfiguration(name, "arp_announce", "1");
+	char nameBuffer[IFNAMSIZ];
+	rtnl_link_i2name(cache, interface, nameBuffer, sizeof(nameBuffer))
+	setIpConfiguration(nameBuffer, "arp_ignore", "1");
+	setIpConfiguration(nameBuffer, "arp_announce", "1");
+	setIpConfiguration(nameBuffer, "arp_filter", "1");
+
 	setIpConfiguration(name, "arp_ignore", "1");
+	setIpConfiguration(name, "arp_announce", "1");
+	setIpConfiguration(name, "arp_filter", "0");
 
 	int newInterface = rtnl_link_name2i(cache, name);
 
