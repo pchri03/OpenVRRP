@@ -412,7 +412,8 @@ bool Netlink::addInterfaceMonitor (int interface, InterfaceCallback *callback, v
 		}
 
 		nl_socket_set_nonblocking(sock);
-		nl_socket_modify_cb(sock, NL_CB_MSG_IN, NL_CB_CUSTOM, nlMessageCallback, sock);
+		nl_socket_modify_cb(sock, NL_CB_SEQ_CHECK, NL_CB_CUSTOM, nlSequenceCallback, 0);
+		nl_socket_modify_cb(sock, NL_CB_VALID, NL_CB_CUSTOM, nlMessageCallback, sock);
 		nl_socket_add_membership(sock, RTMGRP_LINK);
 
 		MainLoop::addMonitor(nl_socket_get_fd(sock), nlSocketCallback, sock);
@@ -453,28 +454,34 @@ bool Netlink::removeInterfaceMonitor (int interface, InterfaceCallback *callback
 void Netlink::nlSocketCallback (int, void *userData)
 {
 	nl_sock *sock = reinterpret_cast<nl_sock *>(userData);
-	nl_recvmsgs_default(sock);
+	int err;
+	while ((err = nl_recvmsgs_default(sock)) > 0);
+	if (err < 0)
+		syslog(LOG_WARNING, "Error receiving netlink message: %s", nl_geterror(err));
 }
 
 int Netlink::nlMessageCallback (nl_msg *msg, void *)
 {
 	nlmsghdr *hdr = nlmsg_hdr(msg);
+
 	if (hdr->nlmsg_type == RTM_NEWLINK)
 	{
 		const ifinfomsg *msg = reinterpret_cast<const ifinfomsg *>(nlmsg_data(hdr));
-		if ((msg->ifi_change & IFF_UP) == IFF_UP)
+
+		CallbackMap::const_iterator interfaceIt = callbacks.find(msg->ifi_index);
+		if (interfaceIt != callbacks.end())
 		{
-			CallbackMap::const_iterator interfaceIt = callbacks.find(msg->ifi_index);
-			if (interfaceIt != callbacks.end())
+			bool isUp = (msg->ifi_flags & IFF_UP) == IFF_UP;
+			for (CallbackDataSet::const_iterator it = interfaceIt->second.begin(); it != interfaceIt->second.end(); ++it)
 			{
-				bool isUp = (msg->ifi_flags & IFF_UP) == IFF_UP;
-				for (CallbackDataSet::const_iterator it = interfaceIt->second.begin(); it != interfaceIt->second.end(); ++it)
-				{
-					it->first(msg->ifi_index, isUp, it->second);
-				}
+				it->first(msg->ifi_index, isUp, it->second);
 			}
 		}
 	}
-	return 0;
+	return NL_OK;
 }
 
+int Netlink::nlSequenceCallback (nl_msg *, void *)
+{
+	return NL_OK;
+}

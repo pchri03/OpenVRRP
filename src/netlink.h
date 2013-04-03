@@ -63,6 +63,7 @@ class Netlink
 
 		static void nlSocketCallback (int fd, void *userData);
 		static int nlMessageCallback (nl_msg *msg, void *userData);
+		static int nlSequenceCallback (nl_msg *msg, void *userData);
 
 		static nl_sock *createSocket();
 
