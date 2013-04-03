@@ -20,6 +20,7 @@
 
 #include <cerrno>
 
+#include <string.h>
 #include <unistd.h>
 #include <syslog.h>
 #include <signal.h>
@@ -123,7 +124,7 @@ bool MainLoop::run ()
 
 void MainLoop::signalCallback (int signum)
 {
-	syslog(LOG_DEBUG, "Caught signal");
+	syslog(LOG_DEBUG, "Caught signal %s", strsignal(signum));
 	m_aborted = true;
 	signal(signum, SIG_IGN);
 }
