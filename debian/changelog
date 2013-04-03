@@ -1,3 +1,10 @@
+openvrrp (0.2.2-1) unstable; urgency=low
+
+  * Fixed bug causing interfaces to stay in LinkDown until disabled and reenabled
+  * Added better handling of netlink multicast traffic
+
+ -- Peter Christensen <pch@ordbogen.com>  Wed,   3 Apr 2013 12:56:33 +0200
+
 openvrrp (0.2.1-1) unstable; urgency=low
 
   * Fixed bug in link state handling
