@@ -288,8 +288,13 @@ void VrrpService::enable ()
 {
 	if (m_state == Disabled)
 	{
-		m_state = Initialize;
-		startup();
+		if (Netlink::isInterfaceUp(m_interface))
+		{
+			m_state = Initialize;
+			startup();
+		}
+		else
+			m_state = LinkDown;
 	}
 }
 

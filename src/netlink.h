@@ -38,23 +38,16 @@ class Netlink
 	public:
 		typedef void (InterfaceCallback)(int interface, bool linkIsUp, void *userData);
 
+		static IpAddress getPrimaryIpAddress (int interface, int family);
+		static bool addIpAddress (int interface, const IpSubnet &ip);
+		static bool removeIpAddress (int interface, const IpSubnet &ip);
+
 		static int addMacvlanInterface (int interface, const std::uint8_t *macAddress, const char *name);
 		static bool removeInterface (int interface);
 		static bool setMac (int interface, const std::uint8_t *macAddress);
 
-		static IpAddress getPrimaryIpAddress (int interface, int family);
-
-		static bool addIpAddress (int interface, const IpSubnet &ip)
-		{
-			return modifyIpAddress(interface, ip, true);
-		}
-
-		static bool removeIpAddress (int interface, const IpSubnet &ip)
-		{
-			return modifyIpAddress(interface, ip, false);
-		}
 		static bool toggleInterface (int interface, bool up);
-
+		static bool isInterfaceUp (int interface);
 		static InterfaceList interfaces ();
 
 		static bool addInterfaceMonitor (int interface, InterfaceCallback *callback, void *userData);
@@ -66,36 +59,16 @@ class Netlink
 		typedef std::map<int,CallbackDataSet> CallbackMap;
 
 		static bool modifyIpAddress (int interface, const IpSubnet &ip, bool add);
-		static int sendNetlinkPacket (const void *packet, unsigned int size, int family = AF_UNSPEC, IpAddress *address = 0, int *interface = 0);
 		static bool setIpConfiguration (const char *interface, const char *parameter, const char *value);
 
 		static void nlSocketCallback (int fd, void *userData);
 		static int nlMessageCallback (nl_msg *msg, void *userData);
 
+		static nl_sock *createSocket();
+
 	private:
 		static CallbackMap callbacks;
 		static nl_sock *sock;
-
-		class Attribute
-		{
-			public:
-				Attribute (std::uint16_t type, const void *data = 0, unsigned int size = 0);
-				Attribute (std::uint16_t type, std::uint32_t value);
-				Attribute ();
-				~Attribute ();
-
-				void addAttribute (const Attribute *attribute);
-
-				unsigned int size () const;
-				unsigned int effectiveSize () const;
-				void toPacket (void *buffer) const;
-
-			private:
-				typedef std::list<const Attribute *> AttributeList;
-				std::uint16_t m_type;
-				std::vector<std::uint8_t> m_buffer;
-				AttributeList m_attributes;
-		};
 };
 
 #endif // INCLUDE_NETLINK_H

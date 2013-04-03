@@ -29,186 +29,108 @@
 #include <net/if_arp.h>
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
+#include <linux/if_link.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
 #include <netlink/netlink.h>
 #include <netlink/route/link.h>
+#include <netlink/route/addr.h>
+#include <netlink/route/link.h>
 
-int Netlink::sendNetlinkPacket (const void *data, unsigned int size, int family, IpAddress *address, int *interface)
+nl_sock *Netlink::createSocket ()
 {
-	int s = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
-	if (s == -1)
+	nl_sock *sock = nl_socket_alloc();
+	int err = nl_connect(sock, NETLINK_ROUTE);
+	if (err != 0)
 	{
-		std::perror("socket");
-		return -1;
+		syslog(LOG_ERR, "Error creating netlink socket: %s", nl_geterror(err));
+		nl_socket_free(sock);
+		return 0;
 	}
 
-	sockaddr_nl addr;
-	addr.nl_family = AF_NETLINK;
-	addr.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR;
-	if (bind(s, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) == -1)
-	{
-		std::perror("bind");
-		close(s);
-		return -1;
-	}
-
-	if (write(s, data, size) == -1)
-	{
-		std::perror("write");
-		close(s);
-		return -1;
-	}
-
-	uint8_t buffer[4096];
-	int ret = 0;
-	const nlmsghdr *hdr = reinterpret_cast<const nlmsghdr *>(buffer);
-	bool hasAddress = false;
-	do
-	{
-		unsigned int size = read(s, buffer, sizeof(buffer));
-		if (s == (unsigned int)-1)
-		{
-			std::perror("write");
-			return -1;
-		}
-
-		hdr = reinterpret_cast<const nlmsghdr *>(buffer);
-
-		const std::uint8_t *ptr = buffer;
-		while (size >= 16 && size >= NLA_ALIGN(hdr->nlmsg_len))
-		{
-			if (hdr->nlmsg_type == NLMSG_ERROR)
-			{
-				if (hdr->nlmsg_len >= 32)
-				{
-					const nlmsgerr *err = reinterpret_cast<const nlmsgerr *>(ptr + 16);
-					ret = err->error;
-				}
-			}
-			else if (hdr->nlmsg_type == RTM_NEWLINK || hdr->nlmsg_type == RTM_GETLINK || hdr->nlmsg_type == RTM_SETLINK)
-			{
-				if (interface != 0 && hdr->nlmsg_len >= 32)
-				{
-					const ifinfomsg *msg = reinterpret_cast<const ifinfomsg *>(ptr + 16);
-					*interface = msg->ifi_index;
-				}
-			}
-			else if (hdr->nlmsg_type == RTM_NEWADDR || hdr->nlmsg_type == RTM_GETADDR || hdr->nlmsg_type == RTM_DELADDR)
-			{
-				if (interface != 0 && address != 0 && hdr->nlmsg_len >= 24)
-				{
-					const ifaddrmsg *msg = reinterpret_cast<const ifaddrmsg *>(ptr + 16);
-					if (*interface == msg->ifa_index && (msg->ifa_flags & IFA_F_PERMANENT))
-					{
-						unsigned int left = hdr->nlmsg_len - 24;
-						const std::uint8_t *attrptr = ptr + 24;
-						while (left >= 4)
-						{
-							const nlattr *attr = reinterpret_cast<const nlattr *>(attrptr);
-							if (!hasAddress && address != 0 && attr->nla_type == IFA_LOCAL)
-							{
-								IpAddress addr(attrptr + 4, family);
-								if (family == AF_INET6)
-								{
-									if (!IN6_IS_ADDR_LINKLOCAL(addr.data()))
-									{
-										*address = addr;
-										hasAddress = true;
-										break;
-									}
-								}
-								else // if (family == AF_INET)
-								{
-									*address = addr;
-									hasAddress = true;
-									break;
-								}
-							}
-	
-							left -= NLA_ALIGN(attr->nla_len);
-							attrptr += NLA_ALIGN(attr->nla_len);
-						}
-					}
-				}
-			}
-
-			ptr += NLA_ALIGN(hdr->nlmsg_len);
-			size -= NLA_ALIGN(hdr->nlmsg_len);
-			hdr = reinterpret_cast<const nlmsghdr *>(ptr);
-		}
-	} while (hdr->nlmsg_flags & NLM_F_MULTI && hdr->nlmsg_type != NLMSG_DONE);
-
-	close(s);
-
-	return ret;
+	return sock;
 }
 
 IpAddress Netlink::getPrimaryIpAddress (int interface, int family)
 {
-	std::uint8_t buffer[sizeof(nlmsghdr) + sizeof(ifaddrmsg)];
+	nl_sock *sock = createSocket();
+	if (sock == 0)
+		return IpAddress();
 
-	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer);
-	hdr->nlmsg_len = sizeof(buffer);
-	hdr->nlmsg_type = RTM_GETADDR;
-	hdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_MATCH;
-	hdr->nlmsg_seq = 1;
-	hdr->nlmsg_pid = getpid();
-
-	ifaddrmsg *msg = reinterpret_cast<ifaddrmsg *>(buffer + 16);
-	msg->ifa_family = family;
-	msg->ifa_prefixlen = 0;
-	msg->ifa_flags = 0;
-	msg->ifa_scope = 0;
-	msg->ifa_index = interface;
+	nl_cache *cache;
+	rtnl_addr_alloc_cache(sock, &cache);
 
 	IpAddress address;
-	int err;
-	err = sendNetlinkPacket(buffer, sizeof(buffer), family, &address, &interface);
-	if (err >= 0)
-		return address;
-	else
+	for (nl_object *it = nl_cache_get_first(cache); it != 0; it = nl_cache_get_next(it))
 	{
-		syslog(LOG_WARNING, "Netlink: Error getting primary address: %s", std::strerror(0 - err));
-		return IpAddress();
+		rtnl_addr *addr = reinterpret_cast<rtnl_addr *>(it);
+		if (
+				rtnl_addr_get_ifindex(addr) == interface &&
+				rtnl_addr_get_flags(addr) & IFA_F_PERMANENT)
+		{
+			nl_addr *local = rtnl_addr_get_local(addr);
+			address = IpAddress(nl_addr_get_binary_addr(local), rtnl_addr_get_family(addr));
+			break;
+		}
 	}
+
+	nl_cache_free(cache);
+
+	if (address.family() == AF_UNSPEC)
+		syslog(LOG_WARNING, "Unable to get a local address for interface %i", interface);
+
+	return address;
+}
+
+bool Netlink::addIpAddress (int interface, const IpSubnet &ip)
+{
+	return modifyIpAddress(interface, ip, true);
+}
+
+bool Netlink::removeIpAddress (int interface, const IpSubnet &ip)
+{
+	return modifyIpAddress(interface, ip, false);
 }
 
 bool Netlink::modifyIpAddress (int interface, const IpSubnet &ip, bool add)
 {
-	// RTM_NEWADDR | RTM_DELADDR
+	nl_sock *sock = createSocket();
+	if (sock == 0)
+		return false;
 
-	Attribute attr(IFA_LOCAL, ip.address().data(), ip.address().size());
+	nl_addr *local = nl_addr_build(ip.address().family(), const_cast<void *>(ip.address().data()), ip.address().size());
 
-	std::vector<std::uint8_t> buffer;
-	buffer.resize(16 + 8 + attr.effectiveSize());
+	rtnl_addr *addr = rtnl_addr_alloc();
+	rtnl_addr_set_ifindex(addr, interface);
+	rtnl_addr_set_prefixlen(addr, ip.cidr());
+	rtnl_addr_set_scope(addr, RT_SCOPE_UNIVERSE);
+	rtnl_addr_set_family(addr, ip.address().family());
+	rtnl_addr_set_local(addr, local);
 
-	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer.data());
-	hdr->nlmsg_len = buffer.size();
-	hdr->nlmsg_type = (add ? RTM_NEWADDR : RTM_DELADDR);
-	hdr->nlmsg_flags = NLM_F_REQUEST | (add ? NLM_F_CREATE | NLM_F_EXCL : 0);
-	hdr->nlmsg_seq = 1;
-	hdr->nlmsg_pid = getpid();
-
-	ifaddrmsg *msg = reinterpret_cast<ifaddrmsg *>(buffer.data() + 16);
-	msg->ifa_family = ip.address().family();
-	msg->ifa_prefixlen = ip.cidr();
-	msg->ifa_flags = 0;
-	msg->ifa_scope = RT_SCOPE_UNIVERSE;
-	msg->ifa_index = interface;
-
-	attr.toPacket(buffer.data() + 16 + 8);
-
-	int err = sendNetlinkPacket(buffer.data(), buffer.size());
-	if (err >= 0)
-		return true;
+	int err;
+	if (add)
+		err = rtnl_addr_add(sock, addr, NLM_F_CREATE | NLM_F_EXCL);
 	else
+		err = rtnl_addr_delete(sock, addr, 0);
+
+	rtnl_addr_put(addr);
+	nl_addr_put(local);
+
+	nl_socket_free(sock);
+
+	if (err != 0)
 	{
-		syslog(LOG_WARNING, "Netlink: Error modifying IP address: %s", std::strerror(0 - err));
+		if (add)
+			syslog(LOG_ERR, "Error adding IP address %s to interface %i: %s", ip.toString().c_str(), interface, nl_geterror(err));
+		else
+			syslog(LOG_WARNING, "Error removing IP address %s from interface %i: %s", ip.toString().c_str(), interface, nl_geterror(err));
 		return false;
 	}
+	else
+		return true;
 }
+
 
 int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress, const char *name)
 {
@@ -223,311 +145,213 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 	//   }
 	// }
 
-	Attribute ifname(IFLA_IFNAME, name, std::strlen(name));
-	Attribute address(IFLA_ADDRESS, macAddress, 6);
-	Attribute operstate(IFLA_OPERSTATE, 6); // IF_OPER_UP
-	Attribute link(IFLA_LINK, (std::uint32_t)interface);
-	Attribute linkinfo(IFLA_LINKINFO);
-	Attribute kind(IFLA_INFO_KIND, "macvlan", 8);
-	Attribute data(IFLA_INFO_DATA);
-	Attribute mode(IFLA_MACVLAN_MODE, (std::uint32_t)MACVLAN_MODE_PRIVATE);
+	nl_msg *msg = nlmsg_alloc_simple(RTM_NEWLINK, NLM_F_CREATE | NLM_F_EXCL);
 
-	
-	Attribute attr;
-	attr.addAttribute(&ifname);
-	attr.addAttribute(&address);
-	attr.addAttribute(&operstate);
-	attr.addAttribute(&link);
-	attr.addAttribute(&linkinfo);
+	ifinfomsg infomsg;
+	std::memset(&infomsg, 0, sizeof(infomsg));
+	infomsg.ifi_family = AF_UNSPEC;
+	infomsg.ifi_type = ARPHRD_ETHER;
+
+	nlmsg_append(msg, &infomsg, sizeof(infomsg), NLMSG_ALIGNTO);
+	nla_put_string(msg, IFLA_IFNAME, name);
+	nla_put(msg, IFLA_ADDRESS, 6, macAddress);
+	nla_put_u32(msg, IFLA_OPERSTATE, 6);
+	nla_put_u32(msg, IFLA_LINK, interface);
 	{
-		linkinfo.addAttribute(&kind);
-		linkinfo.addAttribute(&data);
+		nl_msg *linkinfo = nlmsg_alloc();
+		nla_put_string(linkinfo, IFLA_INFO_KIND, "macvlan");
 		{
-			data.addAttribute(&mode);
+			nl_msg *infodata = nlmsg_alloc();
+			nla_put_u32(infodata, IFLA_MACVLAN_MODE, MACVLAN_MODE_PRIVATE);
+			nla_put_nested(linkinfo, IFLA_INFO_DATA, infodata);
+			nlmsg_free(infodata);
 		}
+		nla_put_nested(msg, IFLA_LINKINFO, linkinfo);
+		nlmsg_free(linkinfo);
 	}
 
-	std::vector<std::uint8_t> buffer;
-	buffer.resize(16 + 16 + attr.effectiveSize());
-
-	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer.data());
-	hdr->nlmsg_len = buffer.size();
-	hdr->nlmsg_type = RTM_NEWLINK;
-	hdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
-	hdr->nlmsg_seq = 1;
-	hdr->nlmsg_pid = getpid();
-
-	ifinfomsg *msg = reinterpret_cast<ifinfomsg *>(buffer.data() + 16);
-	msg->ifi_family = AF_UNSPEC;
-	msg->__ifi_pad = 0;
-	msg->ifi_type = ARPHRD_ETHER;
-	msg->ifi_index = 0;
-	msg->ifi_flags = 0;
-	msg->ifi_change = 0;
-
-	attr.toPacket(buffer.data() + 32);
-
-	int newInterface = 0;
-	int err = sendNetlinkPacket(buffer.data(), buffer.size(), AF_UNSPEC, 0, &newInterface);
-	if (err >= 0)
+	nl_sock *sock = createSocket();
+	if (sock == 0)
 	{
-		// arp_filter = 1
-		// Allows you to have multiple network interfaces on the same
-		// subnet, and have the ARPs for each interface be answered
-		// based on whether or not the kernel would route a packet from
-		// the ARP'd IP out that interface (therefore you must use source
-		// based routing for the to work). In other words it allows control
-		// of which card (usually 1) will respond to an arp request.
-		setIpConfiguration(name, "arp_filter", "1");
-
-		// arp_announce = 1
-		// Try to avoid local addresses that are not in the target's
-		// subnet for this interface. This mode is useful when target
-		// hosts reachable via this interface require the source IP
-		// address in ARP requests to be part of their logical network
-		// configured on the receiving interface. When we generate the
-		// request we will check all our subnets that include the
-		// target IP and will preserve the source address if it is from
-		// such subnet. If there is no such subnet we select source
-		// address according to the rules for level 2
-		setIpConfiguration(name, "arp_announce", "1");
-
-		// arp_ignore = 1
-		// reply only if the target IP address is local address
-		// configured on the incoming interface
-		setIpConfiguration(name, "arp_ignore", "1");
-
-		char originalInterface[IFNAMSIZ];
-		setIpConfiguration(if_indextoname(interface, originalInterface), "arp_ignore", "1");
-
-		return newInterface;
-	}
-	else
-	{
-		syslog(LOG_WARNING, "Netlink: Error creating macvlan interface: %s", std::strerror(0 - err));
+		nlmsg_free(msg);
 		return -1;
 	}
+
+	int err = nl_send_auto_complete(sock, msg);
+
+	nlmsg_free(msg);
+
+	if (err >= 0)
+		err = nl_wait_for_ack(sock);
+
+	if (err < 0)
+	{
+		syslog(LOG_ERR, "Error creating interface: %s", nl_geterror(err));
+		nl_socket_free(sock);
+		return -1;
+	}
+
+	nl_cache *cache;
+
+	rtnl_link_alloc_cache(sock, &cache);
+
+	// Set sysctl parameters
+
+	char nameBuffer[IFNAMSIZ];
+	setIpConfiguration(rtnl_link_i2name(cache, interface, nameBuffer, sizeof(nameBuffer)), "arp_ignore", "1");
+
+	setIpConfiguration(name, "arp_filter", "1");
+	setIpConfiguration(name, "arp_announce", "1");
+	setIpConfiguration(name, "arp_ignore", "1");
+
+	int newInterface = rtnl_link_name2i(cache, name);
+
+	nl_cache_free(cache);
+	nl_socket_free(sock);
+
+	return newInterface;
 }
 
 bool Netlink::removeInterface (int interface)
 {
 	// RTM_DELLINK:
+	nl_sock *sock = createSocket();
 
-	std::uint8_t buffer[16 + 16];
+	nl_msg *msg = nlmsg_alloc_simple(RTM_DELLINK, NLM_F_REQUEST);
+	ifinfomsg infomsg;
 
-	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer);
-	hdr->nlmsg_len = sizeof(buffer);
-	hdr->nlmsg_type = RTM_DELLINK;
-	hdr->nlmsg_flags = NLM_F_REQUEST;
-	hdr->nlmsg_seq = 1;
-	hdr->nlmsg_pid = getpid();
+	std::memset(&infomsg, 0, sizeof(infomsg));
+	infomsg.ifi_family = AF_UNSPEC;
+	infomsg.ifi_type = ARPHRD_ETHER;
+	infomsg.ifi_index = interface;
 
-	ifinfomsg *msg = reinterpret_cast<ifinfomsg *>(buffer + 16);
-	msg->ifi_family = AF_UNSPEC;
-	msg->__ifi_pad = 0;
-	msg->ifi_type = ARPHRD_ETHER;
-	msg->ifi_index = interface;
-	msg->ifi_flags = 0;
-	msg->ifi_change = 0;
+	nlmsg_append(msg, &infomsg, sizeof(infomsg), NLMSG_ALIGNTO);
 
-	syslog(LOG_DEBUG, "Removing interface %i", interface);
+	int err = nl_send_auto_complete(sock, msg);
+	nlmsg_free(msg);
 
-	return sendNetlinkPacket(buffer, sizeof(buffer)) >= 0;
+	if (err >= 0)
+		err = nl_wait_for_ack(sock);
+
+	nl_socket_free(sock);
+
+	if (err < 0)
+	{
+		syslog(LOG_WARNING, "Error removing interface %i: %s", interface, nl_geterror(err));
+		return false;
+	}
+	else
+		return true;
 }
 
 InterfaceList Netlink::interfaces ()
 {
-	DIR *dir;
+	nl_sock *sock = createSocket();
+	if (sock == 0)
+		return InterfaceList();
+
+	nl_cache *cache;
+	rtnl_link_alloc_cache(sock, &cache);
+
 	InterfaceList list;
 
-	if ((dir = opendir("/sys/class/net/")) != 0)
+	for (nl_object *it = nl_cache_get_first(cache); it != 0; it = nl_cache_get_next(it))
 	{
-		char filename[sizeof("/sys/class/net//ifindex") + IFNAMSIZ];
-
-		dirent *entry;
-		while ((entry = readdir(dir)) != 0)
-		{
-			if (entry->d_name[0] != '.' && std::strlen(entry->d_name) <= IFNAMSIZ)
-			{
-				std::sprintf(filename, "/sys/class/net/%s/ifindex", entry->d_name);
-
-				std::ifstream file(filename);
-				if (file.good())
-				{
-					int index;
-					file >> index;
-					file.close();
-					list[index] = entry->d_name;
-				}
-			}
-		}
-		closedir(dir);
+		rtnl_link *link = reinterpret_cast<rtnl_link *>(it);
+		list[rtnl_link_get_ifindex(link)] = rtnl_link_get_name(link);
 	}
+
+	nl_cache_free(cache);
+	nl_socket_free(sock);
 
 	return list;
 }
 
-Netlink::Attribute::Attribute (std::uint16_t type, const void *data, unsigned int size) :
-	m_type(type)
-{
-	if (size > 0)
-	{
-		m_buffer.resize(size);
-		std::memcpy(m_buffer.data(), data, size);
-	}
-}
-
-Netlink::Attribute::Attribute (std::uint16_t type, std::uint32_t value) :
-	m_type(type)
-{
-	m_buffer.resize(4);
-	*reinterpret_cast<std::uint32_t *>(m_buffer.data()) =  value;
-}
-
-Netlink::Attribute::Attribute () :
-	m_type(0)
-{
-}
-
-Netlink::Attribute::~Attribute ()
-{
-}
-
-void Netlink::Attribute::addAttribute (const Attribute *attribute)
-{
-	m_attributes.push_back(attribute);
-}
-
-unsigned int Netlink::Attribute::size () const
-{
-	unsigned int size = (m_type == 0 ? 0 : 4);
-	if (m_attributes.size() > 0)
-	{
-		for (AttributeList::const_iterator attribute = m_attributes.begin(); attribute != m_attributes.end(); ++attribute)
-		{
-			size += (*attribute)->effectiveSize();
-		}
-	}
-	else
-	{
-		size += m_buffer.size();
-	}
-
-	return size;
-}
-
-unsigned int Netlink::Attribute::effectiveSize () const
-{
-	unsigned int size = this->size();
-	if (size & 0x03)
-		size = (size & ~0x03) + 4;
-	return size;
-}
-
-void Netlink::Attribute::toPacket (void *buffer) const
-{
-	std::uint8_t *ptr = reinterpret_cast<std::uint8_t *>(buffer);
-	if (m_type != 0)
-	{
-		*reinterpret_cast<std::uint16_t *>(ptr) = size();
-		*reinterpret_cast<std::uint16_t *>(ptr + 2) = m_type;
-		ptr += 4;
-	}
-	if (m_attributes.size() > 0)
-	{
-		for (AttributeList::const_iterator attribute = m_attributes.begin(); attribute != m_attributes.end(); ++attribute)
-		{
-			(*attribute)->toPacket(ptr);
-			ptr += (*attribute)->effectiveSize();
-		}
-	}
-	else if (m_buffer.size() > 0)
-	{
-		std::memcpy(ptr, m_buffer.data(), m_buffer.size());
-		if (m_buffer.size() & 0x03 != 0)
-			std::memset(ptr + m_buffer.size(), 0, 4 - (m_buffer.size() & 0x03));
-	}
-}
-
 bool Netlink::setMac (int interface, const std::uint8_t *macAddress)
 {
-	Attribute attr(IFLA_ADDRESS, macAddress, 6);
+	nl_sock *sock = createSocket();
+	if (sock == 0)
+		return false;
 
-	std::vector<std::uint8_t> buffer;
-	buffer.resize(16 + 16 + attr.size());
+	nl_msg * msg = nlmsg_alloc_simple(RTM_SETLINK, 0);
 
-	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer.data());
-	hdr->nlmsg_len = buffer.size();
-	hdr->nlmsg_type = RTM_SETLINK;
-	hdr->nlmsg_flags = NLM_F_REQUEST;
-	hdr->nlmsg_seq = 1;
-	hdr->nlmsg_pid = getpid();
+	ifinfomsg infomsg;
+	std::memset(&infomsg, 0, sizeof(infomsg));
+	infomsg.ifi_family = AF_UNSPEC;
+	infomsg.ifi_type = ARPHRD_ETHER;
+	infomsg.ifi_index = interface;
 
-	ifinfomsg *msg = reinterpret_cast<ifinfomsg *>(buffer.data() + 16);
-	msg->ifi_family = AF_UNSPEC;
-	msg->__ifi_pad = 0;
-	msg->ifi_type = ARPHRD_ETHER;
-	msg->ifi_index = interface;
-	msg->ifi_flags = 0;
-	msg->ifi_change = 0;
+	nlmsg_append(msg, &infomsg, sizeof(infomsg), NLMSG_ALIGNTO);
+	nla_put(msg, IFLA_ADDRESS, 6, macAddress);
 
-	attr.toPacket(buffer.data() + 32);
+	int err = nl_send_auto_complete(sock, msg);
+	if (err >= 0)
+		err = nl_wait_for_ack(sock);
 
-	return sendNetlinkPacket(buffer.data(), buffer.size()) >= 0;
+	nlmsg_free(msg);
+
+	if (err < 0)
+		syslog(LOG_ERR, "Error setting MAC address of interface %i: %s", nl_geterror(err));
+
+	nl_socket_free(sock);
+
+	return (err >= 0);
+}
+
+bool Netlink::isInterfaceUp (int interface)
+{
+	nl_sock *sock = createSocket();
+	if (sock == 0)
+		return false;
+
+	nl_cache *cache;
+	rtnl_link_alloc_cache(sock, &cache);
+
+	bool up = false;
+
+	rtnl_link *link = rtnl_link_get(cache, interface);
+	if (link != 0)
+	{
+		if (rtnl_link_get_operstate(link) == 6) // IF_OPER_UP
+			up = true;
+	}
+
+	nl_cache_free(cache);
+	nl_socket_free(sock);
+
+	return up;
 }
 
 bool Netlink::toggleInterface (int interface, bool up)
 {
-	/*
-	std::uint8_t buffer[16 + 16];
-
-	nlmsghdr *hdr = reinterpret_cast<nlmsghdr *>(buffer);
-	hdr->nlmsg_len = sizeof(buffer);
-	hdr->nlmsg_type = RTM_SETLINK;
-	hdr->nlmsg_flags = NLM_F_REQUEST;
-	hdr->nlmsg_seq = 1;
-	hdr->nlmsg_pid = getpid();
-
-	ifinfomsg *msg = reinterpret_cast<ifinfomsg *>(buffer + 16);
-	msg->ifi_family = AF_UNSPEC;
-	msg->__ifi_pad = 0;
-	msg->ifi_type = ARPHRD_ETHER;
-	msg->ifi_index = interface;
-	msg->ifi_flags = (up ? IFF_UP : 0);
-	msg->ifi_change = IFF_UP;
-
-	return sendNetlinkPacket(buffer, sizeof(buffer)) >= 0;
-	*/
-	ifreq ifr;
-	if_indextoname(interface, ifr.ifr_ifrn.ifrn_name);
-
-	int s = socket(PF_INET, SOCK_DGRAM, 0);
-	if (ioctl(s, SIOCGIFFLAGS, &ifr) < 0)
-	{
-		syslog(LOG_ERR, "Netlink: Error getting interface flags: %s", std::strerror(errno));
-		close(s);
+	nl_sock *sock = createSocket();
+	if (sock == 0)
 		return false;
-	}
 
-	short int newFlags = ifr.ifr_ifru.ifru_flags;
-	if (up)
-		newFlags |= IFF_UP;
-	else
-		newFlags &= ~IFF_UP;
-	if (newFlags != ifr.ifr_ifru.ifru_flags)
-	{
-		ifr.ifr_ifru.ifru_flags = newFlags;
-		if (ioctl(s, SIOCSIFFLAGS, &ifr) < 0)
-		{
-			syslog(LOG_ERR, "Netlink: Error setting interface flags: %s", std::strerror(errno));
-			close(s);
-			return false;
-		}
-	}
+	nl_msg * msg = nlmsg_alloc_simple(RTM_SETLINK, 0);
 
-	close(s);
+	ifinfomsg infomsg;
+	std::memset(&infomsg, 0, sizeof(infomsg));
+	infomsg.ifi_family = AF_UNSPEC;
+	infomsg.ifi_type = ARPHRD_ETHER;
+	infomsg.ifi_index = interface;
+	infomsg.ifi_flags = IFF_UP;
+	infomsg.ifi_flags = (up ? IFF_UP : 0);
 
-	return true;
+	nlmsg_append(msg, &infomsg, sizeof(infomsg), NLMSG_ALIGNTO);
+
+	int err = nl_send_auto_complete(sock, msg);
+	if (err >= 0)
+		err = nl_wait_for_ack(sock);
+
+	nlmsg_free(msg);
+
+	if (err < 0)
+		syslog(LOG_ERR, "Error toggling interface %i: %s", nl_geterror(err));
+
+	nl_socket_free(sock);
+
+	return (err >= 0);
 }
 
 bool Netlink::setIpConfiguration (const char *interface, const char *parameter, const char *value)
