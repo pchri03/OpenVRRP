@@ -21,14 +21,15 @@
 #include "vrrpservice.h"
 #include "vrrpsocket.h"
 #include "arpservice.h"
-#include "scriptrunner.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <cstdlib>
 
 #include <unistd.h>
 #include <syslog.h>
+#include <signal.h>
 #include <net/if.h>
 #include <linux/ethtool.h>
 #include <linux/sockios.h>
@@ -622,12 +623,12 @@ void VrrpService::setState (State state)
 		if (state == Backup)
 		{
 			if (m_backupCommand.size() != 0)
-				ScriptRunner::execute(m_backupCommand);
+				executeScript(m_backupCommand);
 		}
 		else if (state == Master)
 		{
 			if (m_backupCommand.size() != 0)
-				ScriptRunner::execute(m_masterCommand);
+				executeScript(m_masterCommand);
 		}
 	}
 }
@@ -794,5 +795,78 @@ void VrrpService::interfaceCallback (int interface, bool isUp, void *userData)
 	{
 		if (service->state() != Disabled)
 			service->shutdown(LinkDown);
+	}
+}
+
+void VrrpService::executeScript (const std::string &command)
+{
+	static bool initialized = false;
+	if (!initialized)
+		signal(SIGCHLD, SIG_IGN);
+
+	pid_t pid = fork();
+	if (pid == 0)
+	{
+		// Child process
+
+		// Setup environment variables
+		// VRRP_IF = Physical network interface
+		// VRRP_VIF = MACVLAN interface
+		// VRRP_VRID = Virtual router id
+		// VRRP_PRIO = Priority
+		// VRRP_PRIMARY_IP = Primary IP of VRRP router
+		// VRRP_MASTER_IP = IP of VRRP master
+		// VRRP_ADVER_INT = Advertisement interval in units of 10ms
+		// VRRP_MASTER_ADVER_INT = Advertisement interval of master
+		// VRRP_PREEMPT = 1 if preempt mode
+		// VRRP_ACCEPT = 1 if accept mode
+		// VRRP_IPLIST = Comma separated list of IP addresses
+		// VRRP_PROTO = IPv4 or IPv6 depending on setup
+		// VRRP_STATE = master or backup depending on state
+
+		char buffer[IFNAMSIZ];
+
+		setenv("VRRP_IF", if_indextoname(m_interface, buffer), 1);
+		setenv("VRRP_VIF", if_indextoname(m_outputInterface, buffer), 1);
+
+		std::sprintf(buffer, "%hhu", m_virtualRouterId);
+		setenv("VRRP_VRID", buffer, 1);
+
+		std::sprintf(buffer, "%hhu", m_priority);
+		setenv("VRRP_PRIO", buffer, 1);
+
+		setenv("VRRP_PRIMARY_IP", m_primaryIpAddress.toString().c_str(), 1);
+		setenv("VRRP_MASTER_IP", m_masterIpAddress.toString().c_str(), 1);
+
+		std::sprintf(buffer, "%u", m_advertisementInterval);
+		setenv("VRRP_ADVER_INT", buffer, 1);
+
+		std::sprintf(buffer, "%u", m_masterAdvertisementInterval);
+		setenv("VRRP_MASTER_ADVER_INT", buffer, 1);
+
+		setenv("VRRP_PREEMPT", m_preemptMode ? "1" : "0", 1);
+		setenv("VRRP_ACCEPT", m_acceptMode ? "1" : "0", 1);
+		setenv("VRRP_STATE", m_state == Master ? "master" : "backup", 1);
+
+		std::string ipList;
+		for (IpSubnetSet::const_iterator subnet = m_subnets.begin(); subnet != m_subnets.end(); ++subnet)
+		{
+			if (ipList.size() > 0)
+				ipList.append(",");
+			ipList.append(subnet->address().toString());
+		}
+
+		setenv("VRRP_IP_LIST", ipList.c_str(), 1);
+
+		setenv("VRRP_PROTO", m_family == AF_INET ? "IPv4" : "IPv6", 1);
+
+		// Execute
+		execl("/bin/sh", "sh", "-c", command.c_str(), 0);
+		syslog(LOG_ERR, "Error executing command `%s': %s", command.c_str(), std::strerror(errno));
+		_exit(EXIT_FAILURE);
+	}
+	else
+	{
+		syslog(LOG_INFO, "Executed command: %s", command.c_str());
 	}
 }

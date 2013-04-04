@@ -450,6 +450,8 @@ class VrrpService : private VrrpEventListener
 
 		void setProtocolErrorReason (ProtocolErrorReason reason);
 
+		void executeScript (const std::string &command);
+
 		static void timerCallback (Timer *timer, void *userData);
 		static void interfaceCallback (int interface, bool isUp, void *userData);
 
