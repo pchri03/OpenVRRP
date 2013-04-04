@@ -627,7 +627,7 @@ void VrrpService::setState (State state)
 		}
 		else if (state == Master)
 		{
-			if (m_backupCommand.size() != 0)
+			if (m_masterCommand.size() != 0)
 				executeScript(m_masterCommand);
 		}
 	}
