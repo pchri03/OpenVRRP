@@ -28,7 +28,7 @@ void VrrpManager::removeVrrpInterfaces ()
 	InterfaceList interfaces = Netlink::interfaces();
 	for (InterfaceList::const_iterator interface = interfaces.begin(); interface != interfaces.end(); ++interface)
 	{
-		if (interface->second.substr(0, 5) == "vrrp.")
+		if (interface->second.substr(0, 4) == "vrrp")
 			Netlink::removeInterface(interface->first);
 	}
 }
