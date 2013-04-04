@@ -1,3 +1,11 @@
+openvrrp (0.3.0-1) unstable; urgency=low
+
+  * Added environment variables to script executing
+  * Interfaces are now named vrrp.VRID or vrrp6.VRID
+  * OpenVRRP no longer set sysctl variables. Use scripting for this
+
+ -- Peter Christensen <pch@ordbogen.com>  Thu,   4 Apr 2013 09:49:30 +0200
+
 openvrrp (0.2.4-1) unstable; urgency=low
 
   * Actually add/remove IP addresses if the address list is modifying while being master
