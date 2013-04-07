@@ -25,7 +25,6 @@
 
 #include <dirent.h>
 #include <syslog.h>
-#include <net/if.h>
 #include <net/if_arp.h>
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
@@ -193,7 +192,18 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 
 	nl_socket_free(sock);
 
-	return if_nametoindex(name);
+	nl_cache *cache;
+#ifdef LIBNL3
+	rtnl_link_alloc_cache(sock, AF_UNSPEC, &cache);
+#else // LIBNL3
+	rtnl_link_alloc_cache(sock, &cache);
+#endif // LIBNL3
+
+	int newInterface = rtnl_link_name2i(cache, name);
+
+	nl_cache_free(cache);
+
+	return newInterface;
 }
 
 bool Netlink::removeInterface (int interface)
@@ -235,7 +245,11 @@ InterfaceList Netlink::interfaces ()
 		return InterfaceList();
 
 	nl_cache *cache;
+#ifdef LIBNL3
+	rtnl_link_alloc_cache(sock, AF_UNSPEC, &cache);
+#else // LIBNL3
 	rtnl_link_alloc_cache(sock, &cache);
+#endif // LIBNL3
 
 	InterfaceList list;
 
@@ -289,7 +303,11 @@ bool Netlink::isInterfaceUp (int interface)
 		return false;
 
 	nl_cache *cache;
+#ifdef LIBNL3
+	rtnl_link_alloc_cache(sock, AF_UNSPEC, &cache);
+#else // LIBNL3
 	rtnl_link_alloc_cache(sock, &cache);
+#endif // LIBNL3
 
 	bool up = false;
 

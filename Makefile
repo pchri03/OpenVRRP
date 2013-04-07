@@ -1,17 +1,14 @@
 CXXFILES:=$(wildcard src/*.cpp)
 OFILES=$(CXXFILES:.cpp=.o)
 TARGET=openvrrp
-CXX:=g++
-EXTRA_CXXFLAGS=-std=c++0x $(shell pkg-config --cflags libnl-2.0)
-EXTRA_LDFLAGS=$(shell pkg-config --libs libnl-2.0)
 
 all: $(TARGET)
 
 $(TARGET): $(OFILES)
-	$(CXX) $(LDFLAGS) $(EXTRA_LDFLAGS) -o $(TARGET) $(OFILES)
+	sh link.sh $(TARGET) $(OFILES)
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) $(EXTRA_CXXFLAGS) -c -o $@ $^
+	sh compile.sh $@ $^
 
 clean:
 	rm -f $(OFILES) $(TARGET)
