@@ -1,3 +1,10 @@
+openvrrp (0.3.2-1) unstable; urgency=low
+
+  * Fixed crash when calling "show router" in telnet session
+  * Support compilation with libnl3
+
+ -- Peter Christensen <pch@ordbogen.com>  Wed,  11 Dec 2013 20:04:31 +0100
+
 openvrrp (0.3.1-1) unstable; urgency=low
 
   * Fixed bug in master script execution
