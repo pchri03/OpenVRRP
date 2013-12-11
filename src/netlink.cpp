@@ -29,6 +29,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
 #include <linux/if_link.h>
+#include <linux/if.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
