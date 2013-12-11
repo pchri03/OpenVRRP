@@ -611,7 +611,7 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 	int family = AF_INET;
 	bool stats = false;
 
-	for (int i = 2; i != argv.size(); ++i)
+	for (int i = 2; i < argv.size(); ++i)
 	{
 		if (std::strcmp(argv[i], "stats") == 0)
 		{
