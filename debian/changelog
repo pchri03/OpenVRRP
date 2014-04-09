@@ -1,3 +1,10 @@
+openvrrp (0.3.3-1) unstable; urgency=low
+
+  * Fixed crash when creating macvlan interface
+  * Support creating Debian package with libnl3
+
+ -- Peter Christensen <pch@ordbogen.com>  Wrd,   9 Apr 2014 14:29:51 +0200
+
 openvrrp (0.3.2-1) unstable; urgency=low
 
   * Fixed crash when calling "show router" in telnet session
