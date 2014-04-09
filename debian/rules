@@ -23,6 +23,7 @@ install: build
 	dh_installdirs
 	dh_installdocs
 	dh_installinit
+	mkdir -p $(CURDIR)/debian/openvrrp/usr/sbin
 	install -m 755 openvrrp $(CURDIR)/debian/openvrrp/usr/sbin
 
 binary-indep: build install
