@@ -191,14 +191,20 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 		return -1;
 	}
 
-	nl_socket_free(sock);
-
 	nl_cache *cache;
 #ifdef LIBNL3
-	rtnl_link_alloc_cache(sock, AF_UNSPEC, &cache);
+	err = rtnl_link_alloc_cache(sock, AF_UNSPEC, &cache);
 #else // LIBNL3
-	rtnl_link_alloc_cache(sock, &cache);
+	err = rtnl_link_alloc_cache(sock, &cache);
 #endif // LIBNL3
+	if (err < 0)
+	{
+		syslog(LOG_ERR, "Error allocating link cache: %s", nl_geterror(err));
+		nl_socket_free(sock);
+		return -1;
+	}
+
+	nl_socket_free(sock);
 
 	int newInterface = rtnl_link_name2i(cache, name);
 
