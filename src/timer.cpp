@@ -27,9 +27,9 @@
 
 Timer::Timer (Callback *callback, void *userData) :
 	m_fd(timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC)),
+	m_armed(false),
 	m_callback(callback),
-	m_userData(userData),
-	m_armed(false)
+	m_userData(userData)
 {
 	if (m_fd == -1)
 		syslog(LOG_ERR, "Error creating timer: %m");

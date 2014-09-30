@@ -63,7 +63,7 @@ bool Configurator::readConfiguration (const char *filename)
 		return false;
 
 	int version;
-	if (!readInt(file, version) || (version != 1 && version != 2))
+	if (!readInt(file, version) || (version != 1 && version != 2 && version != 3))
 		return false;
 
 	int routerCount;
@@ -86,6 +86,7 @@ bool Configurator::readConfiguration (const char *filename)
 		IpSubnetSet subnets;
 		std::string masterCommand;
 		std::string backupCommand;
+		int vlanId;
 
 		// Read data
 		if (
@@ -111,6 +112,12 @@ bool Configurator::readConfiguration (const char *filename)
 		if (version > 1)
 		{
 			if (!readString(file, masterCommand) || !readString(file, backupCommand))
+				return false;
+		}
+
+		if (version > 2)
+		{
+			if (!readInt(file, vlanId))
 				return false;
 		}
 
@@ -161,7 +168,7 @@ bool Configurator::readConfiguration (const char *filename)
 
 		// Create service
 
-		VrrpService *service = VrrpManager::getService(ifIndex, vrid, addressFamily, true);
+		VrrpService *service = VrrpManager::getService(ifIndex, vrid, vlanId, addressFamily, true);
 		if (service == 0)
 		{
 			// TODO - Add to log
@@ -214,7 +221,7 @@ bool Configurator::writeConfiguration (const char *filename)
 	if (!file.good())
 		return false;
 
-	if (!writeInt(file, 2))
+	if (!writeInt(file, 3))
 		return false;
 
 	std::vector<VrrpService *> services = Configurator::services();
@@ -252,7 +259,8 @@ bool Configurator::writeConfiguration (const char *filename)
 	
 		if (
 				!writeString(file, service->masterCommand())
-				|| !writeString(file, service->backupCommand()))
+				|| !writeString(file, service->backupCommand())
+				|| !writeInt(file, service->vlanId()))
 		{
 			return false;
 		}

@@ -319,6 +319,8 @@ bool VrrpSocket::onSocketPacket ()
 	IpAddress dstAddress;
 	decodeControlMessage(hdr, interface, dstAddress);
 
+	syslog(LOG_DEBUG, "Packet from interface %i", interface);
+
 	// Find event listener list for interface
 	EventListenerMap::const_iterator interfaceListenerMap = m_listeners.find(interface);
 	if (interfaceListenerMap == m_listeners.end())
@@ -338,9 +340,8 @@ bool VrrpSocket::onSocketPacket ()
 		const ip6_hdr *ip = reinterpret_cast<const ip6_hdr *>(m_buffer);
 		size = ntohs(ip->ip6_plen);
 		ttl = ip->ip6_hops;
-		if (ip->ip6_nxt == 112) // VRRP
-			packet = m_buffer + sizeof(ip6_hdr);
-		else
+		packet = m_buffer + sizeof(ip6_hdr);
+		if (ip->ip6_nxt != 112) // VRRP
 		{
 			const ip6_ext *ext = reinterpret_cast<const ip6_ext *>(packet);
 			while (ext->ip6e_nxt != 112)

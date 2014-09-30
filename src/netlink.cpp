@@ -69,8 +69,11 @@ IpAddress Netlink::getPrimaryIpAddress (int interface, int family)
 				rtnl_addr_get_ifindex(addr) == interface &&
 				rtnl_addr_get_flags(addr) & IFA_F_PERMANENT)
 		{
+			if (rtnl_addr_get_family(addr) != family)
+				continue;
+
 			nl_addr *local = rtnl_addr_get_local(addr);
-			address = IpAddress(nl_addr_get_binary_addr(local), rtnl_addr_get_family(addr));
+			address = IpAddress(nl_addr_get_binary_addr(local), family);
 			break;
 		}
 	}
@@ -131,12 +134,52 @@ bool Netlink::modifyIpAddress (int interface, const IpSubnet &ip, bool add)
 		return true;
 }
 
+int Netlink::addInterface(nl_msg* msg, const char* name)
+{
+	nl_sock* sock = createSocket();
+	if (sock == 0)
+		return -1;
+
+	int err = nl_send_auto_complete(sock, msg);
+
+	if (err >= 0)
+		err = nl_wait_for_ack(sock);
+
+	if (err < 0)
+	{
+		syslog(LOG_ERR, "Error creating interface: %s", nl_geterror(err));
+		nl_socket_free(sock);
+	}
+
+	nl_cache* cache;
+#ifdef LIBNL3
+	err = rtnl_link_alloc_cache(sock, AF_UNSPEC, &cache);
+#else // LIBNL3
+	err = rtnl_link_alloc_cache(sock, &cache);
+#endif // LIBNL3
+	if (err < 0)
+	{
+		syslog(LOG_ERR, "Error allocating link cache: %s", nl_geterror(err));
+		nl_socket_free(sock);
+		return -1;
+	}
+
+	nl_socket_free(sock);
+
+	int newInterface = rtnl_link_name2i(cache, name);
+
+	nl_cache_free(cache);
+
+	return newInterface;
+
+}
 
 int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress, const char *name)
 {
 	// RTM_NEWLINK:
 	// IFLA_IFNAME = name
 	// IFLA_ADDRESS = macAddress
+	// IFLA_OPERSTATE = 6
 	// IFLA_LINK = interface
 	// IFLA_LINKINFO = {
 	//   IFLA_INFO_KIND = macvlan
@@ -170,47 +213,53 @@ int Netlink::addMacvlanInterface (int interface, const std::uint8_t *macAddress,
 		nlmsg_free(linkinfo);
 	}
 
-	nl_sock *sock = createSocket();
-	if (sock == 0)
-	{
-		nlmsg_free(msg);
-		return -1;
-	}
-
-	int err = nl_send_auto_complete(sock, msg);
+	int ret = addInterface(msg, name);
 
 	nlmsg_free(msg);
 
-	if (err >= 0)
-		err = nl_wait_for_ack(sock);
+	return ret;
+}
 
-	if (err < 0)
+int Netlink::addVlanInterface(int interface, std::uint_fast16_t vlanId, const char* name)
+{
+	// RTM_NEWLINK:
+	// IFLA_IFNAME = name
+	// IFLA_LINK = interface
+	// IFLA_LINKINFO = {
+	//   IFLA_INFO_KIND = vlan
+	//   IFLA_INFO_DATA {
+	//     IFLA_VLAN_ID = vlanId
+	//   }
+	// }
+
+	nl_msg* msg = nlmsg_alloc_simple(RTM_NEWLINK, NLM_F_CREATE | NLM_F_EXCL);
+
+	ifinfomsg infomsg;
+	std::memset(&infomsg, 0, sizeof(infomsg));
+	infomsg.ifi_family = AF_UNSPEC;
+	infomsg.ifi_type = ARPHRD_ETHER;
+
+	nlmsg_append(msg, &infomsg, sizeof(infomsg), NLMSG_ALIGNTO);
+	nla_put_string(msg, IFLA_IFNAME, name);
+	nla_put_u32(msg, IFLA_LINK, interface);
 	{
-		syslog(LOG_ERR, "Error creating interface: %s", nl_geterror(err));
-		nl_socket_free(sock);
-		return -1;
+		nl_msg* linkinfo = nlmsg_alloc();
+		nla_put_string(linkinfo, IFLA_INFO_KIND, "vlan");
+		{
+			nl_msg* infodata = nlmsg_alloc();
+			nla_put_u32(infodata, IFLA_VLAN_ID, vlanId);
+			nla_put_nested(linkinfo, IFLA_INFO_DATA, infodata);
+			nlmsg_free(infodata);
+		}
+		nla_put_nested(msg, IFLA_LINKINFO, linkinfo);
+		nlmsg_free(linkinfo);
 	}
 
-	nl_cache *cache;
-#ifdef LIBNL3
-	err = rtnl_link_alloc_cache(sock, AF_UNSPEC, &cache);
-#else // LIBNL3
-	err = rtnl_link_alloc_cache(sock, &cache);
-#endif // LIBNL3
-	if (err < 0)
-	{
-		syslog(LOG_ERR, "Error allocating link cache: %s", nl_geterror(err));
-		nl_socket_free(sock);
-		return -1;
-	}
+	int ret = addInterface(msg, name);
 
-	nl_socket_free(sock);
+	nlmsg_free(msg);
 
-	int newInterface = rtnl_link_name2i(cache, name);
-
-	nl_cache_free(cache);
-
-	return newInterface;
+	return ret;
 }
 
 bool Netlink::removeInterface (int interface)
@@ -296,7 +345,7 @@ bool Netlink::setMac (int interface, const std::uint8_t *macAddress)
 	nlmsg_free(msg);
 
 	if (err < 0)
-		syslog(LOG_ERR, "Error setting MAC address of interface %i: %s", nl_geterror(err));
+		syslog(LOG_ERR, "Error setting MAC address of interface %i: %s", interface, nl_geterror(err));
 
 	nl_socket_free(sock);
 
@@ -356,7 +405,7 @@ bool Netlink::toggleInterface (int interface, bool up)
 	nlmsg_free(msg);
 
 	if (err < 0)
-		syslog(LOG_ERR, "Error toggling interface %i: %s", nl_geterror(err));
+		syslog(LOG_ERR, "Error toggling interface %i: %s", interface, nl_geterror(err));
 
 	nl_socket_free(sock);
 

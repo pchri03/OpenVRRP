@@ -35,7 +35,7 @@
 #include <linux/sockios.h>
 #include <sys/ioctl.h>
 
-VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRouterId) :
+VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRouterId, std::uint_fast16_t vlanId) :
 	m_virtualRouterId(virtualRouterId),
 	m_priority(100),
 	m_primaryIpAddress(Netlink::getPrimaryIpAddress(interface, family)),
@@ -43,14 +43,18 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_advertisementInterval(100),
 	m_masterAdvertisementInterval(m_advertisementInterval),
 	m_preemptMode(true),
-	m_acceptMode(family == AF_INET6 ? true : false),
+	m_acceptMode(family == AF_INET6 || vlanId != 0 ? true : false),
 	m_masterDownTimer(timerCallback, this),
 	m_advertisementTimer(timerCallback, this),
 	m_state(Disabled),
 	m_family(family),
 	m_interface(interface),
+	m_macvlanInterface(-1),
+	m_vlanInterface(-1),
 	m_outputInterface(interface),
+	m_inputInterface(interface),
 	m_socket(VrrpSocket::instance(m_family)),
+	m_vlanId(vlanId),
 	m_error(0),
 
 	m_statsMasterTransitions(0),
@@ -79,54 +83,77 @@ VrrpService::VrrpService (int interface, int family, std::uint_fast8_t virtualRo
 	m_mac[4] = (family == AF_INET ? 1 : 2);
 	m_mac[5] = virtualRouterId;
 
-	if (m_socket != 0)
+	if (m_socket == 0)
 	{
-		m_socket->addInterface(m_interface);
+		m_error = 1;
+		return;
+	}
 
-		char name[sizeof("vrrpx.xxx")];
-		std::sprintf(name, "vrrp%s.%hhu", (family == AF_INET6 ? "6" : ""), virtualRouterId);
-		m_outputInterface = Netlink::addMacvlanInterface(m_interface, m_mac, name);
-		if (m_outputInterface < 0)
+
+	// Create MACVLAN interface
+	char name[sizeof("vrrpx.xxx.xxxx")];
+	std::sprintf(name, "vrrp%s.%hhu", (family == AF_INET6 ? "6" : ""), virtualRouterId);
+	m_macvlanInterface = Netlink::addMacvlanInterface(m_outputInterface, m_mac, name);
+	if (m_macvlanInterface < 0)
+	{
+		// We could not create a MACVLAN interface, so the MAC we're using is not the VRRP MAC
+		int s = socket(AF_INET, SOCK_DGRAM, 0);
+
+		ifreq req;
+		if_indextoname(interface, req.ifr_name);
+		if (ioctl(s, SIOCGIFHWADDR, &req) == -1)
 		{
-			// We could not create a MACVLAN interface, so the MAC we're using is not the VRRP MAC
-			int s = socket(AF_INET, SOCK_DGRAM, 0);
-
-			ifreq req;
-			if_indextoname(interface, req.ifr_name);
-			if (ioctl(s, SIOCGIFHWADDR, &req) == -1)
-			{
-				syslog(LOG_WARNING, "Failed to get MAC address of VRRP interface: %s", std::strerror(errno));
-			}
-			else
-			{
-				std::memcpy(m_mac, req.ifr_hwaddr.sa_data, sizeof(m_mac));
-			}
-			close(s);
-
-			m_outputInterface = m_interface;
+			syslog(LOG_WARNING, "Failed to get MAC address of VRRP interface: %s", std::strerror(errno));
 		}
-
-		m_socket->addEventListener(m_interface, m_virtualRouterId, this);
-
-		Netlink::addInterfaceMonitor(m_interface, interfaceCallback, this);
+		else
+		{
+			std::memcpy(m_mac, req.ifr_hwaddr.sa_data, sizeof(m_mac));
+		}
+		close(s);
 	}
 	else
-		m_error = 1;
+		m_outputInterface = m_macvlanInterface;
+
+	// Create VLAN interface if necessary
+	if (m_vlanId > 0)
+	{
+		std::sprintf(name, "vrrp%s.%hhu.%hu", (family == AF_INET6 ? "6" : ""), virtualRouterId, static_cast<unsigned short int>(m_vlanId));
+		m_vlanInterface = Netlink::addVlanInterface(m_outputInterface, m_vlanId, name);
+		if (m_vlanInterface < 0)
+		{
+			syslog(LOG_WARNING, "Failed to create VLAN interface: %s", std::strerror(errno));
+			m_error = 1;
+			return;
+		}
+
+		m_outputInterface = m_vlanInterface;
+		m_inputInterface = m_vlanInterface;
+	}
+	
+	m_socket->addInterface(m_inputInterface);
+	m_socket->addEventListener(m_inputInterface, m_virtualRouterId, this);
+
+	Netlink::addInterfaceMonitor(m_interface, interfaceCallback, this);
 }
 
 VrrpService::~VrrpService ()
 {
 	shutdown(Disabled);
 
-	if (m_outputInterface != m_interface)
-		Netlink::removeInterface(m_outputInterface);
-
 	Netlink::removeInterfaceMonitor(m_interface, interfaceCallback, this);
 
-	m_socket->removeInterface(m_interface);
-
 	if (m_socket != 0)
-		m_socket->removeEventListener(m_interface, m_virtualRouterId);
+	{
+		m_socket->removeInterface(m_inputInterface);
+		m_socket->removeEventListener(m_inputInterface, m_virtualRouterId);
+	}
+
+	if (m_vlanInterface != -1)
+		Netlink::removeInterface(m_vlanInterface);
+	if (m_macvlanInterface != -1)
+		Netlink::removeInterface(m_macvlanInterface);
+
+
 }
 
 int VrrpService::error () const
@@ -235,6 +262,7 @@ bool VrrpService::setAdvertisementInterval (unsigned int advertisementInterval)
 	if (advertisementInterval < 1 || advertisementInterval > 4095)
 		return false;
 	m_advertisementInterval = advertisementInterval;
+	return true;
 }
 
 unsigned int VrrpService::advertisementInterval () const
@@ -272,7 +300,7 @@ void VrrpService::setAcceptMode (bool enabled)
 	if (m_acceptMode == enabled)
 		return;
 
-	if (m_family == AF_INET6)
+	if (m_family == AF_INET6 || m_vlanId != 0)
 		return;
 
 	if (m_state == Master)
@@ -355,6 +383,11 @@ void VrrpService::setBackupCommand (const std::string &command)
 std::string VrrpService::backupCommand () const
 {
 	return m_backupCommand;
+}
+
+std::uint_fast16_t VrrpService::vlanId() const
+{
+	return m_vlanId;
 }
 
 std::uint_fast32_t VrrpService::statsMasterTransitions () const
@@ -562,7 +595,7 @@ void VrrpService::onIncomingVrrpPacket (
 			++m_statsRcvdPriZeroPackets;
 			m_pendingNewMasterReason = Priority;
 		}
-		else if (priority > m_priority || priority == m_priority && address > m_primaryIpAddress)
+		else if (priority > m_priority || (priority == m_priority && address > m_primaryIpAddress))
 		{
 			// The conflicing master has higher priority than us, so we transition to backup
 			m_advertisementTimer.stop();
@@ -607,8 +640,6 @@ void VrrpService::setState (State state)
 			syslog(LOG_INFO, "%s (Router %u, Interface %u): Changed state to %s", m_name, (unsigned int)m_virtualRouterId, (unsigned int)m_interface, states[m_state]);
 		if (m_state == Master)
 		{
-			if (m_outputInterface != m_interface)
-				Netlink::toggleInterface(m_outputInterface, true);
 			setVirtualMac();
 			addIpAddresses();
 			sendAdvertisement(m_priority);
@@ -641,24 +672,22 @@ void VrrpService::sendARPs ()
 
 bool VrrpService::setVirtualMac ()
 {
-	if (m_outputInterface == m_interface)
-	{
-		// Never mess with the "true" interface
-		return true;
-	}
-	else
-		return Netlink::toggleInterface(m_outputInterface, true);
+	bool ret = true;
+	if (m_macvlanInterface != -1)
+		ret &= Netlink::toggleInterface(m_macvlanInterface, true);
+	if (m_vlanInterface != -1)
+		ret &= Netlink::toggleInterface(m_vlanInterface, true);
+	return ret;
 }
 
 bool VrrpService::setDefaultMac ()
 {
-	if (m_outputInterface == m_interface)
-	{
-		// Never mess with the "true" interface
-		return true;
-	}
-	else
-		return Netlink::toggleInterface(m_outputInterface, false);
+	bool ret = true;
+	if (m_vlanInterface != -1)
+		ret &= Netlink::toggleInterface(m_vlanInterface, false);
+	if (m_macvlanInterface != -1)
+		ret &= Netlink::toggleInterface(m_macvlanInterface, false);
+	return ret;
 }
 
 bool VrrpService::addIpAddresses ()
@@ -749,7 +778,7 @@ void VrrpService::setProtocolErrorReason (ProtocolErrorReason reason)
 	// TODO Send SNMP notificaiton
 }
 
-void VrrpService::onIncomingVrrpError (unsigned int interface, std::uint_fast8_t virtualRouterId, VrrpEventListener::Error error)
+void VrrpService::onIncomingVrrpError (unsigned int, std::uint_fast8_t, VrrpEventListener::Error error)
 {
 	switch (error)
 	{
@@ -783,7 +812,7 @@ void VrrpService::onIncomingVrrpError (unsigned int interface, std::uint_fast8_t
 	}
 }
 
-void VrrpService::interfaceCallback (int interface, bool isUp, void *userData)
+void VrrpService::interfaceCallback (int, bool isUp, void *userData)
 {
 	VrrpService *service = reinterpret_cast<VrrpService *>(userData);
 	if (isUp)

@@ -41,7 +41,7 @@
 #define RESP_INVALID_PRIORITY	"Invalid priority\n"
 #define RESP_INVALID_INTERVAL	"Invalid interval\n"
 
-#define RESP_ADD_ROUTER				"add router INTF VRID [ipv6]\n"
+#define RESP_ADD_ROUTER				"add router INTF VRID [vlan VLAN] [ipv6]\n"
 #define RESP_ADD_ADDRESS			"add address INTF VRID [ipv6] CIDR\n"
 #define RESP_REMOVE_ROUTER			"remove router INTF VRID [ipv6]\n"
 #define RESP_REMOVE_ADDRESS			"remove address INTF VRID [ipv6] CIDR\n"
@@ -232,28 +232,32 @@ void TelnetSession::onAddCommand (const std::vector<char *> &argv)
 
 void TelnetSession::onAddRouterCommand (const std::vector<char *> &argv)
 {
-	bool ipv6 = (argv.size() > 4 && std::strcmp(argv[4], "ipv6") == 0);
-
-	if (ipv6)
+	if (argv.size() == 4)
 	{
-		if (argv.size() == 5)
-		{
-			// add router INTF VRID ipv6
-			getService(argv, true);
-		}
-		else
-			SEND_RESP(RESP_ADD_ROUTER);
+		// add router INTF VRID
+		getService(argv, true);
+		return;
 	}
-	else
+	else if (argv.size() == 5 && std::strcmp(argv[4], "ipv6") == 0)
 	{
-		if (argv.size() == 4)
-		{
-			// add router INTF VRID
-			getService(argv, true);
-		}
-		else
-			SEND_RESP(RESP_ADD_ROUTER);
+		// add router INTF VRID ipv6
+		getService(argv, true);
+		return;
 	}
+	else if (argv.size() == 6 && std::strcmp(argv[4], "vlan") == 0)
+	{
+		// add router INTF VRID vlan VLAN
+		getService(argv, true);
+		return;
+	}
+	else if (argv.size() == 7 && std::strcmp(argv[4], "vlan") == 0 && std::strcmp(argv[6], "ipv6") == 0)
+	{
+		// add router INTF VRID vlan VLAN ipv6
+		getService(argv, true);
+		return;
+	}
+	
+	SEND_RESP(RESP_ADD_ROUTER);
 }
 
 void TelnetSession::onAddAddressCommand (const std::vector<char *> &argv)
@@ -410,7 +414,7 @@ void TelnetSession::onSetRouterCommand (const std::vector<char *> &argv)
 	VrrpService *service = getService(argv);
 	if (service != 0)
 	{
-		int offset = (service->family() == AF_INET6 ? 5 : 4);
+		unsigned int offset = (service->family() == AF_INET6 ? 5 : 4);
 		if (argv.size() > offset)
 		{
 			if (std::strcmp(argv[offset], "primary") == 0)
@@ -525,7 +529,7 @@ void TelnetSession::onSetRouterCommand (const std::vector<char *> &argv)
 				if (argv.size() > offset + 1 && std::strcmp(argv[offset + 1], "command") == 0)
 				{
 					std::string command;
-					for (int i = offset + 2; i != argv.size(); ++i)
+					for (unsigned int i = offset + 2; i != argv.size(); ++i)
 					{
 						if (i != offset + 2)
 							command += ' ';
@@ -611,7 +615,7 @@ void TelnetSession::onShowRouterCommand (const std::vector<char *> &argv)
 	int family = AF_INET;
 	bool stats = false;
 
-	for (int i = 2; i < argv.size(); ++i)
+	for (unsigned int i = 2; i < argv.size(); ++i)
 	{
 		if (std::strcmp(argv[i], "stats") == 0)
 		{
@@ -735,7 +739,7 @@ void TelnetSession::onShowStatsCommand (const std::vector<char *> &)
 
 VrrpService *TelnetSession::getService (const std::vector<char *> &argv, bool create)
 {
-	// xxx xxx INTF VRID [ipv6]
+	// xxx xxx INTF VRID [vlan VLAN] [ipv6]
 	int interface = if_nametoindex(argv[2]);
 	if (interface <= 0)
 	{
@@ -750,9 +754,23 @@ VrrpService *TelnetSession::getService (const std::vector<char *> &argv, bool cr
 		return 0;
 	}
 
-	int family = (argv.size() > 4 && std::strcmp(argv[4], "ipv6") == 0 ? AF_INET6 : AF_INET);
+	int family;
+	std::uint_fast16_t vlanId;
 
-	VrrpService *service = VrrpManager::getService(interface, vrid, family, create);
+	if (create && argv.size() >= 6 && std::strcmp(argv[4], "vlan") == 0)
+	{
+		// xxx xxx INTF VRID vlan VLAN [ipv6]
+		family = (argv.size() >= 7 && std::strcmp(argv[6], "ipv6") == 0 ? AF_INET6 : AF_INET);
+		vlanId = std::atoi(argv[5]);
+	}
+	else
+	{
+		// xxx xxx INTF VRID [ipv6]
+		family = (argv.size() >= 5 && std::strcmp(argv[4], "ipv6") == 0 ? AF_INET6 : AF_INET);
+		vlanId = 0;
+	}
+
+	VrrpService *service = VrrpManager::getService(interface, vrid, vlanId, family, create);
 	if (service == 0)
 	{
 		if (create)
@@ -805,7 +823,7 @@ void TelnetSession::sendFormatted (const char *templ, ...)
 void TelnetSession::showRouter (const VrrpService *service)
 {
 	char tmp[IFNAMSIZ];
-	sendFormatted("Virtual router %hhu on interface %s (%s)\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6");
+	sendFormatted("Virtual router %hhu on interface %s (%s, VLAN %hu)\n", service->virtualRouterId(), if_indextoname(service->interface(), tmp), service->family() == AF_INET ? "IPv4" : "IPv6", service->vlanId());
 	sendFormatted(" Master IP Address:      %s\n", service->masterIpAddress().toString().c_str());
 	sendFormatted(" Primary IP Address:     %s%s\n", service->primaryIpAddress().toString().c_str(), service->hasAutoPrimaryIpAddress() ? "" : " (Forced)");
 

@@ -35,7 +35,7 @@ IpAddress::IpAddress (const char *address)
 		if (end != 0)
 		{
 			std::ptrdiff_t size = end - address - 1;
-			if (size <= sizeof(INET6_ADDRSTRLEN))
+			if (static_cast<std::size_t>(size) <= sizeof(INET6_ADDRSTRLEN))
 			{
 				char tmp[INET6_ADDRSTRLEN + 1];
 				std::memcpy(tmp, address + 1, size);

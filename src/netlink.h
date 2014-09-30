@@ -43,6 +43,7 @@ class Netlink
 		static bool removeIpAddress (int interface, const IpSubnet &ip);
 
 		static int addMacvlanInterface (int interface, const std::uint8_t *macAddress, const char *name);
+		static int addVlanInterface(int interface, std::uint_fast16_t vlanId, const char* name);
 		static bool removeInterface (int interface);
 		static bool setMac (int interface, const std::uint8_t *macAddress);
 
@@ -60,6 +61,7 @@ class Netlink
 
 		static bool modifyIpAddress (int interface, const IpSubnet &ip, bool add);
 		static bool setIpConfiguration (const char *interface, const char *parameter, const char *value);
+		static int addInterface(nl_msg* msg, const char* name);
 
 		static void nlSocketCallback (int fd, void *userData);
 		static int nlMessageCallback (nl_msg *msg, void *userData);

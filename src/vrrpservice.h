@@ -69,8 +69,8 @@ class VrrpService : private VrrpEventListener
 		  * @param family Address family. Can be either AF_INET or AF_INET6
 		  * @param virtualRouterId Virtual router id
 		  */
-		VrrpService (int interface, int family, std::uint_fast8_t virtualRouterId);
-		~VrrpService ();
+		VrrpService (int interface, int family, std::uint_fast8_t virtualRouterId, std::uint_fast16_t vlanId);
+		virtual ~VrrpService ();
 
 		/**
 		  * Get the internal error code
@@ -347,6 +347,12 @@ class VrrpService : private VrrpEventListener
 		std::string backupCommand () const;
 
 		/**
+		  * Get vlan id
+		  * @return Vlan id
+		  */
+		std::uint_fast16_t vlanId() const;
+
+		/**
 		  * Get number of master transitions
 		  *
 		  * Each time a new router becomes master, this value is incremented
@@ -472,8 +478,11 @@ class VrrpService : private VrrpEventListener
 		State m_state;
 
 		int m_family;
-		int m_interface;
-		int m_outputInterface;
+		int m_interface; // Actual input interface
+		int m_macvlanInterface; // MACVLAN interface (if any)
+		int m_vlanInterface; // VLAN interface (if any)
+		int m_outputInterface; // Output interface (Can be any of original, MACVLAN or VLAN)
+		int m_inputInterface; // Input interface (Can be original or VLAN)
 
 		std::uint8_t m_mac[6];
 
@@ -483,7 +492,9 @@ class VrrpService : private VrrpEventListener
 		VrrpSocket *m_socket;
 
 		std::string m_backupCommand;
-		std::string m_masterCommand;		
+		std::string m_masterCommand;
+
+		std::uint_fast16_t m_vlanId;
 
 		const char *m_name;
 		int m_error;

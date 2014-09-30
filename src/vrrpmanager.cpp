@@ -33,7 +33,7 @@ void VrrpManager::removeVrrpInterfaces ()
 	}
 }
 
-VrrpService *VrrpManager::getService (int interface, std::uint_fast8_t virtualRouterId, int family, bool createIfMissing)
+VrrpService *VrrpManager::getService (int interface, std::uint_fast8_t virtualRouterId, std::uint_fast16_t vlanId, int family, bool createIfMissing)
 {
 	VrrpServiceMap::const_iterator interfaceServices = m_services.find(interface);
 	if (interfaceServices != m_services.end())
@@ -49,16 +49,16 @@ VrrpService *VrrpManager::getService (int interface, std::uint_fast8_t virtualRo
 
 	if (createIfMissing)
 	{
-		VrrpService *service = new VrrpService(interface, family, virtualRouterId);
+		VrrpService *service = new VrrpService(interface, family, virtualRouterId, vlanId);
 		if (service->error() == 0)
 		{
-			syslog(LOG_INFO, "Created %s router with VID %hhu on interface %i", family == AF_INET ? "IPv4" : "IPv6", virtualRouterId, interface);
+			syslog(LOG_INFO, "Created %s router with VID %hhu on interface %i (VLAN %hu)", family == AF_INET ? "IPv4" : "IPv6", virtualRouterId, interface, static_cast<unsigned short int>(vlanId));
 			m_services[interface][virtualRouterId][family] = service;
 			return service;
 		}
 		else
 		{
-			syslog(LOG_ERR, "Error creating %s router with VID %hhu on interface %i", family == AF_INET ? "IPv4" : "IPv6", virtualRouterId, interface);
+			syslog(LOG_ERR, "Error creating %s router with VID %hhu on interface %i (VLAN %hu)", family == AF_INET ? "IPv4" : "IPv6", virtualRouterId, interface, static_cast<unsigned const int>(vlanId));
 			delete service;
 			return 0;
 		}

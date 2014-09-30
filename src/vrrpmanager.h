@@ -27,15 +27,15 @@ class VrrpService;
 class VrrpManager
 {
 	public:
-		typedef std::map<int, std::map<std::uint_least8_t, std::map<int, VrrpService *> > > VrrpServiceMap;
+		typedef std::map<int, std::map<std::uint_fast8_t, std::map<int, VrrpService *> > > VrrpServiceMap;
 
 		static inline const VrrpServiceMap &services ()
 		{
 			return m_services;
 		}
 
-		static VrrpService *getService (int interface, std::uint_least8_t virtualRouterId, int family, bool createIfMissing = false);
-		static void removeService (int interface, std::uint_least8_t virtualRouterId, int family);
+		static VrrpService *getService (int interface, std::uint_fast8_t virtualRouterId, std::uint_fast16_t vlanId, int family, bool createIfMissing);
+		static void removeService (int interface, std::uint_fast8_t virtualRouterId, std::uint_fast16_t vlanId, int family);
 		static void removeService (VrrpService *service);
 
 		static void removeVrrpInterfaces ();

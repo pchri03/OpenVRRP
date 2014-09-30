@@ -38,7 +38,6 @@ class Timer
 	private:
 		int m_fd;
 		bool m_armed;
-		MainLoop *m_mainLoop;
 		Callback *m_callback;
 		void *m_userData;
 };

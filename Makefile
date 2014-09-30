@@ -14,9 +14,9 @@ clean:
 	rm -f $(OFILES) $(TARGET)
 
 test: $(TARGET)
-	sudo ./$(TARGET)
+	sudo ./$(TARGET) --stdout
 
 debug: $(TARGET)
-	sudo gdb ./$(TARGET)
+	sudo gdb --args ./$(TARGET) --stdout
 
 .PHONY: all clean test debug
